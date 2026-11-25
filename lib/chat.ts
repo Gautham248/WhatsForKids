@@ -34,6 +34,7 @@ export interface PillGroup {
   pills: Pill[];
 }
 export interface CardInfo {
+  sponsored?: boolean;
   reason?: string;
   tag?: string;
   note?: string;
@@ -202,7 +203,8 @@ export interface TurnOut {
   history?: HistoryEntry;
 }
 
-export type TurnEvent = { kind: "text"; text: string; acts?: Act[] } | { kind: "act"; act: Act };
+// deviceCapped: the store says this guest device has used up today's typed messages (counted across chats).
+export type TurnEvent = { kind: "text"; text: string; acts?: Act[]; deviceCapped?: boolean } | { kind: "act"; act: Act };
 
 export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): TurnOut {
   const chat: Chat = { ...prev, msgs: [...prev.msgs], shown: [...prev.shown] };
@@ -253,7 +255,7 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
       return finish({ ...via, result: res, costRs });
     }
     const info: Record<string, CardInfo> = {};
-    res.ranked.forEach((r) => (info[r.id] = { reason: r.reason?.text, tag: r.reason?.tag }));
+    res.ranked.forEach((r) => (info[r.id] = { reason: r.reason?.text, tag: r.reason?.tag, sponsored: r.sponsored || undefined }));
     const n = res.ranked.length;
     const gaps = missingSlots(chat.slots);
     const follow = gaps.length ? ` To narrow it down, tell me ${askFor(gaps)}. Type it, or pick as many as you like below.` : " Tap a card for details, or refine below.";
@@ -308,6 +310,12 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     });
     notes.push(`Guard: ${chat.typed}/${cap} typed turns used (guest cap ${d.ops.guestCap}, signed-in cap ${d.ops.userCap}). No parsing, no model call.`);
     finish({ path: "guard", why: "turn cap reached" });
+    return { chat, shownIds, llmCostRs: 0 };
+  }
+  if (!d.user && ev.kind === "text" && ev.deviceCapped) {
+    say({ text: `That's today's limit of ${d.ops.guestDailyCap ?? 15} typed messages for guests on this device. Sign in to keep chatting — the pills and cards above still work.`, pills: [{ label: "Sign in", act: { t: "login" } }, { label: "Start over", act: { t: "reset" } }] });
+    notes.push("Guard: guest daily limit per device reached. No parsing, no model call.");
+    finish({ path: "guard", why: "guest daily device cap reached" });
     return { chat, shownIds, llmCostRs: 0 };
   }
   chat.typed++;

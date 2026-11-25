@@ -194,6 +194,8 @@ export function makeSeed(now: Date): Data {
     price: p.price,
     priceAsOf: day(-(p.checked ?? 4)),
     emoji: p.emoji,
+    // Gear set pays for placement and qualifies on merit; magnetic tiles pays too but is not published, so it never shows.
+    sponsored: p.id === "gear-set" || p.id === "magnetic-tiles" ? { until: day(60) } : undefined,
     // Fairy wings (still in Discovered) has no photo yet, so the publish gate shows the photo check failing.
     photo: p.id === "fairy-wings" ? "" : `https://cdn.example.com/${p.id}.jpg`,
     color: p.color,
@@ -276,7 +278,7 @@ export function makeSeed(now: Date): Data {
   const log = products.map((p, i) => ({ id: `l-${i}`, productId: p.id, from: null, to: p.status, at: day(-30), actor: "Seed (demo)" }));
 
   return {
-    v: 2,
+    v: 3,
     baseDate: isoDay(now),
     brands,
     products,
@@ -288,6 +290,8 @@ export function makeSeed(now: Date): Data {
     statusLog: log,
     events: [],
     impressions: {},
+    chatSessions: [],
+    sales: [],
     scrapeRuns: [],
     user: null,
     saved: [],
@@ -295,6 +299,6 @@ export function makeSeed(now: Date): Data {
     child: null,
     consents: [],
     deletionRequests: [],
-    ops: { llmDisabled: false, clockOffsetDays: 0, breakAdapter: false, guestCap: 5, userCap: 10, catalogueVersion: 1, llmCalls: 0, llmCostRs: 0, annotate: false, inspector: false, limitSpecific: 3, limitVague: 6, exposureWarnPct: 50, minPerCell: 3 },
+    ops: { llmDisabled: false, clockOffsetDays: 0, breakAdapter: false, guestCap: 5, userCap: 10, catalogueVersion: 1, llmCalls: 0, llmCostRs: 0, annotate: false, inspector: false, limitSpecific: 3, limitVague: 6, exposureWarnPct: 50, minPerCell: 3, dailyCapRs: 25, monthlyBudgetRs: 500, spendByDay: {}, alerts: [], guestDailyCap: 15, sponsoredOn: true },
   };
 }

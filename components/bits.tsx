@@ -31,6 +31,7 @@ export function ProductCard({ p, pos, info }: { p: Product; pos: number; info?: 
         </button>
       </div>
       <div className="body">
+        {info?.sponsored && <span className="badge warn" title="A brand paid for this position. It still had to pass every check and match your search.">Sponsored</span>}
         <Link href={`/p/${p.id}?pos=${pos}`} className="title">
           {p.name}
         </Link>

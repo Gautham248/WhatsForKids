@@ -115,6 +115,7 @@ export interface Product {
   price: number; // rupees
   priceAsOf: string; // ISO date
   emoji: string;
+  sponsored?: { until: string }; // paid placement window. Only ever shown if the product already qualifies on merit.
   photo?: string; // product photo URL; required to publish. Optional only so older saved data still loads.
   color: string;
   category: string;
@@ -204,6 +205,8 @@ export interface RedirectEvent {
   routeKind: RouteKind;
   position: number;
   sessionId: string;
+  chatId?: string; // which chat the click came from, for clicks-per-chat
+  source?: "chat" | "wishlist";
   slots: Slots;
 }
 
@@ -257,6 +260,31 @@ export interface Ops {
   limitVague?: number; // anything less specific
   exposureWarnPct?: number; // warn when the top 5 products take more than this share of impressions
   minPerCell?: number; // minimum visible products per age band × category
+  dailyCapRs?: number; // model spend per day; reaching it switches the model off
+  monthlyBudgetRs?: number; // model spend per month; reaching it switches the model off
+  spendByDay?: Record<string, number>; // demo-clock date -> model spend in rupees
+  alerts?: SpendAlert[];
+  guestDailyCap?: number; // typed guest messages per device per day, across chats
+  sponsoredOn?: boolean; // master switch for the sponsored slot
+}
+export interface SpendAlert {
+  at: string; // demo-clock date
+  scope: "day" | "month";
+  pct: 50 | 80 | 100;
+  spentRs: number;
+  capRs: number;
+}
+export interface ChatSession {
+  id: string; // random per chat, no link to the person
+  startedAt: string;
+  turns: number;
+}
+export interface SaleReport {
+  date: string;
+  brandId: string;
+  productId: string;
+  orderRef: string;
+  amountRs: number;
 }
 export const DEFAULT_LIMITS = { specific: 3, vague: 6 };
 export const resultLimit = (ops: Ops, specific: boolean) =>
@@ -274,6 +302,8 @@ export interface Data {
   diffs: Diff[];
   statusLog: StatusLog[];
   events: RedirectEvent[];
+  chatSessions?: ChatSession[]; // counts only, no text
+  sales?: SaleReport[]; // reported by brands, imported by CSV
   impressions?: Record<string, number>; // productId -> times shown on a chat card. Product ids only, no slots, no text.
   scrapeRuns: ScrapeRun[];
   user: User | null;

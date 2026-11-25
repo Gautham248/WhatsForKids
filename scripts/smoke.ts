@@ -3,7 +3,9 @@ import { makeSeed } from "../lib/seed";
 import { rulesParse, needsLlm, llmParse, missingSlots } from "../lib/parser";
 import { regression, refreshBrand, scrapeUrl } from "../lib/scraper";
 import { initialChat, runTurn, Act } from "../lib/chat";
-import { visibility, publishGate } from "../lib/gate";
+import { visibility, publishGate, todayOf } from "../lib/gate";
+import { recordSpend, chatMetrics } from "../lib/admin";
+import { parseSalesCsv } from "../lib/csv";
 import { search, countImpressions, exposure } from "../lib/rank";
 
 let fails = 0;
@@ -185,6 +187,70 @@ console.log("search age 6-8:", search(d, { age: "6-8" }).ranked.map((r) => d.pro
   ok(publishGate(e, { ...stacker2, name: "  " }).find((g) => g.key === "name")?.ok === false, "gate: blank name fails");
   ok(e.profiles["p-blocks-100"]?.playSource === "type", "drafted play ideas are marked as general ideas for the type");
   ok(e.profiles["p-rainbow-stacker"]?.playSource === "product", "hand-written play ideas are marked as product-specific");
+}
+
+// phase 3: spend cap + alerts, guest device cap, metrics, sales import, sponsored slot
+{
+  const e = makeSeed(new Date());
+  const today = todayOf(e);
+  e.ops.dailyCapRs = 1; e.ops.monthlyBudgetRs = 1000;
+  ok(recordSpend(e, 0.49).length === 0, "spend 49%: no alert");
+  const a50 = recordSpend(e, 0.01);
+  ok(a50.length === 1 && a50[0].pct === 50 && a50[0].scope === "day", "spend 50%: one daily alert");
+  ok(recordSpend(e, 0.1).length === 0, "spend 60%: 50% alert not repeated");
+  const a100 = recordSpend(e, 0.5);
+  ok(a100.map((a) => a.pct).join() === "80,100" && e.ops.llmDisabled, "spend 110%: 80% and 100% alerts, model switched off");
+  const tom = new Date(Date.parse(today) + 86400000).toISOString().slice(0, 10);
+  ok(recordSpend(e, 0.6, tom).map((a) => a.pct).join() === "50", "next day: daily alerts start again");
+  const typo = runTurn(e, initialChat(), { kind: "text", text: "five yr old likes dinasaurs" });
+  ok(typo.chat.info?.path === "text-rules" && typo.llmCostRs === 0, "model off: typo message falls back to rules, costs nothing");
+  e.ops.llmDisabled = false; e.ops.dailyCapRs = 0;
+  ok(recordSpend(e, 5).every((a) => a.scope === "month") , "daily cap 0 means no daily cap");
+
+  const g = runTurn(e, initialChat(), { kind: "text", text: "something for a 6 year old", deviceCapped: true });
+  const gl = g.chat.msgs[g.chat.msgs.length - 1];
+  ok(/today's limit/.test(gl.text) && g.chat.info?.path === "guard" && !g.chat.slots.age && g.chat.typed === 0, "guest device cap: sign-in prompt, nothing parsed, not counted");
+  e.user = { id: "u1", name: "A", email: "a@example.com" };
+  const u = runTurn(e, initialChat(), { kind: "text", text: "something for a 6 year old", deviceCapped: true });
+  ok(u.chat.slots.age === "6-8", "signed-in user is not affected by the guest device cap");
+  e.user = null;
+
+  ok(!Number.isNaN(chatMetrics(e).clickShare) && chatMetrics(e).clicksPerChat === 0, "metrics with 0 chats: no NaN");
+  e.chatSessions = [{ id: "c1", startedAt: "", turns: 3 }, { id: "c2", startedAt: "", turns: 1 }, { id: "c3", startedAt: "", turns: 0 }];
+  const ev = (chatId: string) => ({ id: "x" + Math.random(), at: "", productId: "p-kite", routeKind: "direct" as const, position: 1, sessionId: "s", chatId, slots: {} });
+  e.events = [ev("c1"), ev("c1")];
+  const m = chatMetrics(e);
+  ok(m.chats === 2 && m.clickShare === 0.5 && m.clicksPerChat === 1, "metrics: 2 chats, one with 2 clicks → 50%, 1.0 per chat");
+
+  const csv = ["date,brand_id,product_id,order_ref,amount_inr", `${today},b-tinker,p-gear-set,T1,1299`, `${today},b-tinker,p-nope,T2,100`, `${today},b-tinker,p-gear-set,T3,0`, `${today},b-oak,p-gear-set,T4,1299`, `${today},b-tinker,p-gear-set,T1,1299`, `2026-13-40,b-tinker,p-gear-set,T5,10`].join("\n");
+  const r = parseSalesCsv(csv, e);
+  ok(r.rows.length === 1 && r.rows[0].amountRs === 1299, "sales import: the one valid row is kept");
+  const lines = r.errors.map((x) => x.line).join();
+  ok(lines === "3,4,5,6,7", "sales import: bad rows rejected with line numbers (" + r.errors.map((x) => `${x.line}:${x.msg}`).join("; ") + ")");
+  ok(parseSalesCsv("a,b\n1,2", e).errors[0]?.line === 1, "sales import: wrong header rejected");
+
+  const f = makeSeed(new Date());
+  const runs = (["0-2", "3-5", "6-8", "9-12", "13+"] as const).flatMap((age) => [search(f, { age }), search(f, { age, budget: 2000 })]);
+  ok(runs.every((x) => x.ranked.filter((y) => y.sponsored).length <= 1), "at most one sponsored item per result set");
+  const gs = search(f, { age: "6-8" });
+  const gi = gs.ranked.findIndex((y) => y.id === "p-gear-set");
+  ok(gi >= 0 && (gs.ranked[gi].sponsored ? gi === 1 : true), "gear set appears for 6–8; if via the sponsored slot, at position 2");
+  ok(!runs.some((x) => x.ranked.some((y) => y.id === "p-magnetic-tiles")), "sponsored but unpublished product never appears");
+  const s912 = search(f, { age: "9-12" }).ranked;
+  ok(s912[1]?.id === "p-gear-set" && s912[1].sponsored && s912.length <= 6, "sponsored slot fills position 2 when the product did not rank there on merit");
+  ok(!gs.ranked.some((y) => y.sponsored), "no paid slot used when the sponsored product already ranks on merit");
+  ok(!search(f, { age: "6-8", budget: 1000 }).ranked.some((y) => y.id === "p-gear-set"), "sponsored product outside the budget never appears");
+  f.products.find((p) => p.id === "p-gear-set")!.sponsored = { until: "2000-01-01" };
+  f.ops.catalogueVersion++;
+  ok(!search(f, { age: "6-8" }).ranked.some((y) => y.sponsored), "expired sponsorship ignored");
+  f.products.find((p) => p.id === "p-gear-set")!.sponsored = { until: "2999-01-01" };
+  f.ops.sponsoredOn = false;
+  ok(!search(f, { age: "6-8" }).ranked.some((y) => y.sponsored), "sponsored switch off: no sponsored slot");
+  f.ops.sponsoredOn = true;
+  const card = runTurn(f, initialChat(), { kind: "text", text: "something for a 7 year old" }).chat;
+  const lc = card.msgs[card.msgs.length - 1];
+  const sp = Object.entries(lc.cardInfo ?? {}).filter(([, i]) => i.sponsored);
+  ok(sp.length <= 1 && sp.every(([id]) => lc.cards!.indexOf(id) === 1), "chat card marks the sponsored item, at position 2");
 }
 console.log(fails ? `${fails} FAILED` : "ALL OK");
 process.exit(fails ? 1 : 0);

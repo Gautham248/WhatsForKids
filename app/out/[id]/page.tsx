@@ -9,7 +9,7 @@ import { RedirectEvent } from "@/lib/types";
 // Stands in for the real redirect endpoint: log a coded event, then forward to the brand.
 export default function OutPage() {
   const { id } = useParams<{ id: string }>();
-  const { d, update, chat, sessionId } = useApp();
+  const { d, update, chat, sessionId, chatId } = useApp();
   const [ev, setEv] = useState<RedirectEvent | null>(null);
   const done = useRef(false);
   const p = d.products.find((x) => x.id === id);
@@ -20,7 +20,7 @@ export default function OutPage() {
     if (done.current || !p || !vis.visible || !route || route.status !== "active" || sessionId === "s_pending") return;
     done.current = true;
     const pos = Number(new URLSearchParams(window.location.search).get("pos") ?? "1") || 1;
-    const e: RedirectEvent = { id: "ev_" + Math.random().toString(36).slice(2, 9), at: new Date().toISOString(), productId: p.id, routeKind: route.kind, position: pos, sessionId, slots: chat.slots };
+    const e: RedirectEvent = { id: "ev_" + Math.random().toString(36).slice(2, 9), at: new Date().toISOString(), productId: p.id, routeKind: route.kind, position: pos, sessionId, chatId, source: "chat", slots: chat.slots };
     update((x) => void x.events.unshift(e));
     setEv(e);
   }, [p, vis.visible, route, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps

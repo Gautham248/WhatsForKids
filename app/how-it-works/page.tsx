@@ -27,6 +27,10 @@ const TESTS: { id: string; what: string; how: string; href: string }[] = [
   { id: "B4", what: "Scraper, fixtures, regression", how: "Admin → Scraper: scrape a sample URL, run the regression suite, then tick “simulate an adapter bug” and run it again.", href: "/admin/scraper" },
   { id: "B4", what: "Changed values need approval", how: "Scraper → Run refresh on Tinker & Co, then open Approvals. Until approved the product page keeps the old price.", href: "/admin/diffs" },
   { id: "B5", what: "No raw chat stored, provider register, deletion", how: "Inspector shows what is persisted: coded slots only (age band, budget, category, interests, gift or own, occasion, boy or girl), never chat text. Admin → Ops has the register. Account → Delete account.", href: "/admin/ops" },
+  { id: "Cost", what: "Spend cap and alerts", how: "Admin → Ops: set the model daily cap to ₹0.02, then type “five yr old likes dinasaurs” a few times. Alerts fire once at 50%, 80% and 100%; at 100% the model switches itself off and chat carries on with the free rules.", href: "/admin/ops" },
+  { id: "Cost", what: "Guest limits", how: "5 typed messages per guest chat, and 15 per device per day across chats (New chat does not reset it). Then the guest is asked to sign in; pills keep working. Both caps are in Admin → Ops.", href: "/admin/ops" },
+  { id: "Money", what: "Is it working?", how: "Admin → Events shows the three numbers: share of chats that end in a brand click, clicks per chat, and sales reported by brands (import a sample in Admin → CSV → Brand sales report).", href: "/admin/events" },
+  { id: "Money", what: "Sponsored slot", how: "Search for a 9 year old: the gear set shows at position 2, labelled Sponsored. Magnetic tiles pays too but is not published, so it never appears. Payment buys position, never entry: the product must pass the gate and match the search. Switch it off in Admin → Ops.", href: "/" },
   { id: "Cost", what: "Cheap by design", how: "Compare a tapped turn (free), a typed turn the rules parse (free) and “five yr old likes dinasaurs” (a simulated model call, ~₹0.01). Flip the model kill-switch in Ops.", href: "/admin/ops" },
 ];
 

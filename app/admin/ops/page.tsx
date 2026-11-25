@@ -1,6 +1,7 @@
 "use client";
 import { BANDS, CATEGORIES, DEFAULT_LIMITS, bandLabel } from "@/lib/types";
 import { exposure } from "@/lib/rank";
+import { DEFAULT_CAPS } from "@/lib/admin";
 import { useApp } from "@/lib/store";
 import { Note } from "@/components/bits";
 import { refreshBrand } from "@/lib/scraper";
@@ -56,6 +57,25 @@ export default function Ops() {
           <thead><tr><th>Provider</th><th>Purpose</th><th>Allowed fields</th><th>Region</th><th>Retention</th><th>Deletion</th></tr></thead>
           <tbody>{PROVIDERS.map((r) => <tr key={r[0]}>{r.map((c, i) => <td key={i} className="small">{i === 0 ? <b>{c}</b> : c}</td>)}</tr>)}</tbody>
         </table>
+      </div>
+
+      <div className="card">
+        <h2>Spend caps, guest limit, sponsored slot</h2>
+        <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+          <label className="f" style={{ width: 170 }}>Model daily cap (₹)<input type="number" min={0} step={0.01} value={d.ops.dailyCapRs ?? DEFAULT_CAPS.dailyRs} onChange={(e) => update((x) => void (x.ops.dailyCapRs = Math.max(0, Number(e.target.value))))} /></label>
+          <label className="f" style={{ width: 170 }}>Model monthly budget (₹)<input type="number" min={0} step={1} value={d.ops.monthlyBudgetRs ?? DEFAULT_CAPS.monthlyRs} onChange={(e) => update((x) => void (x.ops.monthlyBudgetRs = Math.max(0, Number(e.target.value))))} /></label>
+          <label className="f" style={{ width: 200 }}>Guest messages per device per day<input type="number" min={1} value={d.ops.guestDailyCap ?? DEFAULT_CAPS.guestDaily} onChange={(e) => update((x) => void (x.ops.guestDailyCap = Math.max(1, Number(e.target.value))))} /></label>
+          <label className="row"><input type="checkbox" checked={d.ops.sponsoredOn !== false} onChange={(e) => update((x) => void (x.ops.sponsoredOn = e.target.checked))} /> Sponsored slot on</label>
+        </div>
+        <p className="small">Model spend today: <b>₹{(d.ops.spendByDay?.[today] ?? 0).toFixed(4)}</b> of ₹{d.ops.dailyCapRs ?? DEFAULT_CAPS.dailyRs} · this month: <b>₹{Object.entries(d.ops.spendByDay ?? {}).filter(([k]) => k.startsWith(today.slice(0, 7))).reduce((t, [, v]) => t + v, 0).toFixed(4)}</b> of ₹{d.ops.monthlyBudgetRs ?? DEFAULT_CAPS.monthlyRs}</p>
+        {(d.ops.alerts ?? []).length > 0 && (
+          <ul className="small">
+            {[...(d.ops.alerts ?? [])].reverse().slice(0, 8).map((a, i) => (
+              <li key={i}><span className={"badge " + (a.pct === 100 ? "bad" : "warn")}>{a.pct}%</span> {a.at}: {a.scope === "day" ? "daily cap" : "monthly budget"} ₹{a.spentRs.toFixed(4)} of ₹{a.capRs}{a.pct === 100 ? " → model switched off, rules only" : ""}</li>
+            ))}
+          </ul>
+        )}
+        <Note>Alerts fire once at 50%, 80% and 100%; at 100% the model kill-switch turns on by itself and the chat carries on with the free rules parser. Try a daily cap of ₹0.02, then type “five yr old likes dinasaurs” a few times. The guest limit counts typed messages per device per day across chats (New chat does not reset it); pills always work. Real build: email alerts plus a hard cap at the provider.</Note>
       </div>
 
       <div className="card">

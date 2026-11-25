@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 import { useApp } from "@/lib/store";
+import { todayOf } from "@/lib/gate";
 import { Note } from "@/components/bits";
-import { parseCsv, toCsv } from "@/lib/csv";
+import { parseCsv, parseSalesCsv, SALES_HEADER, toCsv } from "@/lib/csv";
 import { addProductFromFixture, scrapeUrl, SAMPLE_URLS } from "@/lib/scraper";
 
 const BATCH_LIMIT = 100;
@@ -16,6 +17,8 @@ export default function CsvPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [batchErr, setBatchErr] = useState("");
   const [rec, setRec] = useState("");
+  const [salesText, setSalesText] = useState("");
+  const [salesOut, setSalesOut] = useState<string[]>([]);
   const [recOut, setRecOut] = useState<string[]>([]);
 
   const runBatch = () => {
@@ -106,6 +109,21 @@ export default function CsvPage() {
         <textarea style={{ minHeight: 100, fontFamily: "ui-monospace, monospace", fontSize: 12.5 }} value={rec} onChange={(e) => setRec(e.target.value)} placeholder="id,name,price_inr,age_min_months,age_max_months" />
         <button className="btn" style={{ marginTop: 8 }} onClick={() => importRecords(rec)} disabled={!rec.trim()}>Import records</button>
         {recOut.length > 0 && <pre style={{ marginTop: 8 }}>{recOut.join("\n")}</pre>}
+      </div>
+
+      <div className="card">
+        <h2>3. Brand sales report</h2>
+        <Note>Brands send what sold through our links; we import it so Admin → Events can show sales next to clicks. Every bad row is rejected with its line number; a repeated order ref is skipped.</Note>
+        <div className="row" style={{ margin: "10px 0" }}>
+          <button className="btn sm" onClick={() => setSalesText(toCsv([SALES_HEADER, [todayOf(d), "b-tinker", "p-gear-set", "TK-1001", 1299], [todayOf(d), "b-oak", "p-rainbow-stacker", "OK-2002", 1499], [todayOf(d), "b-oak", "p-gear-set", "OK-2003", 1299], [todayOf(d), "b-kiki", "p-rocket-kit", "KK-3004", 0]]))}>Fill a sample</button>
+        </div>
+        <textarea style={{ minHeight: 100, fontFamily: "ui-monospace, monospace", fontSize: 12.5 }} value={salesText} onChange={(e) => setSalesText(e.target.value)} placeholder={SALES_HEADER.join(",")} />
+        <button className="btn" style={{ marginTop: 8 }} disabled={!salesText.trim()} onClick={() => {
+          const { rows: ok, errors } = parseSalesCsv(salesText, d);
+          if (ok.length) update((x) => void (x.sales = [...(x.sales ?? []), ...ok]));
+          setSalesOut([`Imported ${ok.length} sale${ok.length === 1 ? "" : "s"}.`, ...errors.map((e) => `Line ${e.line}: ${e.msg}`)]);
+        }}>Import sales</button>
+        {salesOut.length > 0 && <pre style={{ marginTop: 8 }}>{salesOut.join("\n")}</pre>}
       </div>
     </>
   );

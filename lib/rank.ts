@@ -13,6 +13,7 @@ export interface Scored {
 export interface Ranked extends Scored {
   reason?: ReasonLine;
   reasonWhy: string;
+  sponsored?: boolean;
 }
 export interface Relax {
   label: string;
@@ -115,6 +116,18 @@ export function search(d: Data, slots: Slots, shown: string[] = []): SearchResul
     const { line, why } = pickReason(d, p, slots);
     picked.push({ ...r, reason: line, reasonWhy: why });
     if (picked.length >= limit) break;
+  }
+  // Sponsored slot: at most one, at position 2, and only from products that already passed every filter
+  // above (published, visible, current evidence, age, budget, category). Payment buys position, never entry.
+  const spon = d.ops.sponsoredOn === false ? undefined : list
+    .filter((p) => p.sponsored && p.sponsored.until >= todayOf(d) && !picked.some((r) => r.id === p.id))
+    .map((p) => adjusted.find((r) => r.id === p.id) ?? score(p, slots))
+    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))[0];
+  if (spon && picked.length) {
+    const p = d.products.find((x) => x.id === spon.id)!;
+    const { line, why } = pickReason(d, p, slots);
+    picked.splice(Math.min(1, picked.length), 0, { ...spon, reason: line, reasonWhy: why, sponsored: true });
+    if (picked.length > limit) picked.pop();
   }
   const relax: Relax[] = [];
   if (!list.length) {

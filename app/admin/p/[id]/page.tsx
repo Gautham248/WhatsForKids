@@ -100,6 +100,7 @@ export default function Editor() {
         <h2>Details (from scrape, curator-corrected)</h2>
         <div className="grid g4">
           <label className="f">Name<input type="text" value={p.name} onChange={(e) => upd((q) => void (q.name = e.target.value))} /></label>
+          <label className="f">Sponsored until<span className="row" style={{ gap: 6 }}><input type="date" value={p.sponsored?.until ?? ""} onChange={(e) => upd((q) => void (q.sponsored = e.target.value ? { until: e.target.value } : undefined))} />{p.sponsored && <button className="btn sm" onClick={() => upd((q) => void (q.sponsored = undefined))}>Stop</button>}</span><span className="small muted">Payment buys position 2 only. The product must still pass the gate and match the search.</span></label>
           <label className="f">Photo URL<input type="text" value={p.photo ?? ""} placeholder="required to publish" onChange={(e) => upd((q) => void (q.photo = e.target.value))} /></label>
           <label className="f">Price (₹)<input type="number" value={p.price} onChange={(e) => upd((q) => { q.price = Number(e.target.value); q.priceAsOf = new Date().toISOString().slice(0, 10); })} /></label>
           <label className="f">Age from (months)<input type="number" value={p.ageMin} onChange={(e) => upd((q) => void (q.ageMin = Number(e.target.value)))} /></label>
