@@ -70,7 +70,10 @@ CREATE TABLE occasion (
 CREATE FUNCTION slots_are_coded(s jsonb) RETURNS boolean
 LANGUAGE sql IMMUTABLE AS $$
   SELECT jsonb_typeof(s) = 'object'
-     AND (s - ARRAY['age','category','budget','interests','recipient','occasion']) = '{}'::jsonb
+     AND (s - ARRAY['age','category','budget','interests','recipient','occasion','gender','personalisable']) = '{}'::jsonb
+     -- gender ('boy'|'girl') only words replies; it is never a filter or a ranking input.
+     AND (NOT s ? 'gender' OR s->>'gender' IN ('boy','girl'))
+     AND (NOT s ? 'personalisable' OR jsonb_typeof(s->'personalisable') = 'boolean')
      AND pg_column_size(s) < 1024            -- a coded slot object is tiny; blocks smuggling free text
 $$;
 
@@ -151,6 +154,8 @@ CREATE TABLE product (
   short_description text NOT NULL DEFAULT '',
   giftable          boolean NOT NULL DEFAULT false,
   curator_boost     smallint NOT NULL DEFAULT 0 CHECK (curator_boost BETWEEN 0 AND 10),
+  personalisation_note text,                               -- curator-set, e.g. 'Name printed on the lid, chosen on the brand''s site'. NULL = not personalisable. We never collect the name.
+  sponsored_until   date,                                  -- paid placement window. Buys position 2 only; the product must still be visible and match the search.
   status            product_status NOT NULL DEFAULT 'discovered',
   last_checked_at   timestamptz NOT NULL DEFAULT now(),
   suspended_reason  text,
@@ -207,6 +212,7 @@ CREATE TABLE editorial_profile (
   intro          text NOT NULL DEFAULT '',
   points         jsonb NOT NULL DEFAULT '[]',           -- 3 x {title, body}
   play_ideas     jsonb NOT NULL DEFAULT '[]',           -- 3 x {title, prompt}
+  play_source    text NOT NULL DEFAULT 'type' CHECK (play_source IN ('product','type')),  -- 'type' renders as "General ideas for this kind of toy"
   why_picked     text NOT NULL DEFAULT '',
   best_for_band  text REFERENCES age_band(slug),
   source_labels  jsonb NOT NULL DEFAULT '{}',           -- per section: 'AI draft' | 'Curator' | 'Brand page'
@@ -273,15 +279,32 @@ CREATE UNIQUE INDEX one_active_route_per_product ON purchase_route (product_id) 
 -- ---------------------------------------------------------------------------
 -- 6. Parent-side data (coded values only)
 -- ---------------------------------------------------------------------------
-CREATE TABLE child_profile (                            -- one per user in V1. No name, no free text.
-  user_id     uuid PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
+CREATE TABLE child_profile (                            -- several per user. No name, no birth date, no photo, no free text.
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+  label       text NOT NULL CHECK (label ~ '^Child [1-5]$'),  -- fixed labels, never a name
   age_band    text NOT NULL REFERENCES age_band(slug),
-  consent_id  uuid NOT NULL REFERENCES consent_record(id)
+  consent_id  uuid NOT NULL REFERENCES consent_record(id), -- one record covers all of a user's profiles; re-confirmed when one is added
+  UNIQUE (user_id, label)
 );
 CREATE TABLE child_profile_interest (
-  user_id       uuid NOT NULL REFERENCES child_profile(user_id) ON DELETE CASCADE,
-  interest_slug text NOT NULL REFERENCES interest_tag(slug),
-  PRIMARY KEY (user_id, interest_slug)
+  child_profile_id uuid NOT NULL REFERENCES child_profile(id) ON DELETE CASCADE,
+  interest_slug    text NOT NULL REFERENCES interest_tag(slug),
+  PRIMARY KEY (child_profile_id, interest_slug)
+);
+
+CREATE TABLE wishlist (                                 -- shareable list built from saved items
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+  share_code text NOT NULL UNIQUE,                       -- random token in the link; carries no data
+  title      text NOT NULL CHECK (title IN ('Birthday list','Festival list','Wishlist')),  -- preset, no free text
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE wishlist_item (
+  wishlist_id uuid NOT NULL REFERENCES wishlist(id) ON DELETE CASCADE,
+  product_id  uuid NOT NULL REFERENCES product(id) ON DELETE CASCADE,
+  bought_at   timestamptz,                               -- set by anyone with the link; shared between relatives
+  PRIMARY KEY (wishlist_id, product_id)
 );
 
 CREATE TABLE saved_item (
@@ -318,6 +341,20 @@ CREATE TABLE session (                                  -- used only for caps (t
   device_hash text
 );
 
+CREATE TABLE chat (                                     -- one conversation; counts only, never text
+  id          text PRIMARY KEY,                          -- random per chat
+  session_id  text REFERENCES session(id) ON DELETE SET NULL,
+  started_at  timestamptz NOT NULL DEFAULT now(),
+  turn_count  integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE guest_device_day (                          -- guest typed messages per device per day, across chats
+  device_hash text NOT NULL,
+  day         date NOT NULL,
+  typed_count integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (device_hash, day)
+);
+
 CREATE TABLE redirect_event (                           -- the revenue event
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   at                timestamptz NOT NULL DEFAULT now(),
@@ -325,7 +362,28 @@ CREATE TABLE redirect_event (                           -- the revenue event
   purchase_route_id uuid NOT NULL REFERENCES purchase_route(id),
   position          smallint,                            -- rank position of the card clicked
   session_id        text REFERENCES session(id) ON DELETE SET NULL,
+  chat_id           text REFERENCES chat(id) ON DELETE SET NULL,   -- NULL for wishlist clicks
+  source            text NOT NULL DEFAULT 'chat' CHECK (source IN ('chat','wishlist')),
+  sponsored         boolean NOT NULL DEFAULT false,       -- clicked while shown in the sponsored slot
   slots             jsonb NOT NULL CHECK (slots_are_coded(slots))
+);
+
+CREATE TABLE product_impression_day (                   -- how often each product is shown on a chat card
+  day        date NOT NULL,
+  product_id uuid NOT NULL REFERENCES product(id) ON DELETE CASCADE,
+  shown      integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, product_id)
+);
+
+CREATE TABLE brand_sales_report (                       -- sales reported back by brands (CSV import); we do not track purchases
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand_id     uuid NOT NULL REFERENCES brand(id),
+  product_id   uuid NOT NULL REFERENCES product(id),
+  order_ref    text NOT NULL,
+  sold_on      date NOT NULL,
+  amount_paise bigint NOT NULL CHECK (amount_paise > 0),
+  imported_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (brand_id, order_ref)
 );
 CREATE INDEX redirect_by_day ON redirect_event (at);
 
@@ -336,6 +394,33 @@ CREATE TABLE llm_usage (                                -- drives the daily kill
   tokens_out     bigint  NOT NULL DEFAULT 0,
   cost_paise     bigint  NOT NULL DEFAULT 0
 );
+
+CREATE TABLE spend_alert (                              -- raised once per period at 50/80/100%; 100% turns the model off
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  scope       text NOT NULL CHECK (scope IN ('day','month')),
+  period      text NOT NULL,                             -- 'YYYY-MM-DD' or 'YYYY-MM'
+  pct         smallint NOT NULL CHECK (pct IN (50, 80, 100)),
+  spent_paise bigint NOT NULL,
+  cap_paise   bigint NOT NULL,
+  at          timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (scope, period, pct)
+);
+
+CREATE TABLE ops_setting (                              -- admin-tunable limits (Admin > Ops in the demo)
+  singleton            boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+  limit_specific       smallint NOT NULL DEFAULT 3 CHECK (limit_specific BETWEEN 1 AND 12),
+  limit_vague          smallint NOT NULL DEFAULT 6 CHECK (limit_vague BETWEEN 1 AND 12),
+  guest_chat_cap       smallint NOT NULL DEFAULT 5,
+  user_chat_cap        smallint NOT NULL DEFAULT 10,
+  guest_daily_cap      smallint NOT NULL DEFAULT 15,
+  llm_daily_cap_paise  bigint NOT NULL DEFAULT 2500,
+  llm_monthly_paise    bigint NOT NULL DEFAULT 50000,
+  llm_disabled         boolean NOT NULL DEFAULT false,
+  sponsored_on         boolean NOT NULL DEFAULT true,
+  exposure_warn_pct    smallint NOT NULL DEFAULT 50,
+  min_per_cell         smallint NOT NULL DEFAULT 3
+);
+INSERT INTO ops_setting DEFAULT VALUES;
 
 -- ---------------------------------------------------------------------------
 -- 8. Scraper (raw is kept apart from curated)
@@ -481,6 +566,8 @@ BEGIN
   miss := missing_evidence(pid);
 
   RETURN QUERY VALUES
+    ('name',    'Name and brand set',                 length(trim(p.name)) > 0 AND p.brand_id IS NOT NULL, p.name),
+    ('photo',   'Photo set',                          p.photo_asset_id IS NOT NULL, coalesce(p.photo_asset_id::text, 'no photo')),
     ('age',     'Age band set',                       p.age_min_months IS NOT NULL AND p.age_max_months IS NOT NULL, coalesce(p.age_min_months::text,'?') || '-' || coalesce(p.age_max_months::text,'?') || ' months'),
     ('price',   'Price and as-of date set',           p.price_paise > 0 AND p.price_as_of IS NOT NULL, p.price_paise::text || ' paise as of ' || coalesce(p.price_as_of::text,'?')),
     ('url',     'Source URL set',                     p.source_url ~ '^https?://', p.source_url),

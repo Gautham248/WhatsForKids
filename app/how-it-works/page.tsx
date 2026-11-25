@@ -3,12 +3,12 @@ import Link from "next/link";
 import { useState } from "react";
 
 const TESTS: { id: string; what: string; how: string; href: string }[] = [
-  { id: "B2", what: "Guest discovery and follow-up", how: "In Chat type “something for a 6 year old”. Under the results the reply names what it still doesn’t know (budget, what they like, gift or not, boy or girl) and offers pill groups for just those, built from the results shown.", href: "/" },
+  { id: "B2", what: "Guest discovery and follow-up", how: "In Chat type “something for a 6 year old”. Under the results the reply names everything it still doesn’t know (budget, what they like, gift or not, boy or girl) in one go, and offers a pill group for each, plus Occasion and Extras (“Can be personalised”). Interest and category pills come from the results shown. Answer it all in one message or one round of picks.", href: "/" },
   { id: "B2", what: "Pick several pills at once", how: "Tap “Up to ₹1,000”, two interests under “They like” and “It’s a gift”. Taps only select (one per group, up to 2 interests); press “Show ideas” to apply them all in one turn and one search.", href: "/" },
   { id: "B2", what: "Type and tap together", how: "Pick “Up to ₹500”, then type “under 2000, he loves space” and Send. Pills and text go in one turn: pills apply first, the typed words win a conflict (budget becomes ₹2,000). The Inspector lists both.", href: "/" },
   { id: "B2", what: "Gender for wording only", how: "Boy or girl comes from the text (son, niece, he, she…) or a pill. It only changes the reply wording, never the results: the catalogue is not gender-tagged.", href: "/" },
   { id: "B2", what: "Price and age filters", how: "Watch the filter funnel in the Inspector shrink as filters are applied, whether one pill at a time or several together.", href: "/" },
-  { id: "B2", what: "No-result response", how: "Type “books under 300 for a 3 year old”. It relaxes one thing at a time: first the next budget up (“Nothing under ₹500… here are options up to ₹1,000”), and only if that is empty too does it offer to drop a filter.", href: "/" },
+  { id: "B2", what: "No-result response", how: "Type “music toys for a 4 year old under 500”. It relaxes one thing at a time: first the next budget up (“Nothing under ₹500… Here are options up to ₹1,000”). Try “books under 300 for a 13 year old”: when the next budget is empty too, it offers to drop one filter instead. Never an empty screen.", href: "/" },
   { id: "B2", what: "How many results", how: "3 for a specific request (age and kind of thing), up to 6 for a vague one. Change both in Admin → Ops.", href: "/admin/ops" },
   { id: "B2", what: "Gift occasion", how: "Type “gift for my nephew, 6 years”. An Occasion group (birthday, festival, return gift) appears with the other missing details; picking one also marks it as a gift.", href: "/" },
   { id: "B2", what: "Non-product questions", how: "Type “my toddler has tantrums at bedtime”. No advice; one related search is offered instead (“Bedtime books for 0–2”).", href: "/" },
@@ -22,13 +22,13 @@ const TESTS: { id: string; what: string; how: string; href: string }[] = [
   { id: "B2", what: "Publish and unpublish", how: "Admin → open a published product → Unpublish. Its public page then shows “not available”. Republish needs the gate to pass.", href: "/admin" },
   { id: "B3", what: "Absent or expired evidence", how: "Admin → Ops → +26 days. The wooden rainbow stacker disappears. Add or renew its evidence and it returns.", href: "/admin/ops" },
   { id: "B3", what: "Unsupported certification request", how: "Type “CE marked toys for a 2 year old”. Then try “ISI certified toys for a 2 year old”. Only products with a current evidence record are named.", href: "/" },
-  { id: "B3", what: "Required to publish", how: "Admin → Felt fairy wings: the gate lists name and brand, photo, age band, price, link, route, approved profile and evidence. It has no photo yet, so “Photo set” fails until you add one.", href: "/admin" },
+  { id: "B3", what: "Required to publish", how: "Admin → Felt fairy wings: the gate lists ten checks: name and brand, photo, age band, price and date, source link, brand authorisation, approved profile, 3 approved reason lines, active route with disclosure, and evidence. It has no photo yet, so “Photo set” fails until you add one.", href: "/admin" },
   { id: "B3", what: "Thin products: general ideas, hidden gaps", how: "On a product page, “Ways to play together” drafted from the product type says it is general ideas for this kind of toy. Material, pieces or cleaning with nothing confirmed are hidden, not filled in. Admin → product → “Fill from product type” drafts them; an admin still approves.", href: "/admin" },
-  { id: "Ops", what: "Same products every time?", how: "Run a few searches, then Admin → Ops → Exposure: the share of cards taken by the top 5 products (warns above 50%), and live products per age band × kind of thing, with thin cells highlighted.", href: "/admin/ops" },
   { id: "B3", what: "Stage skipping with a recorded reason", how: "Admin → a product in Discovered → pick Expert review → Move. It asks for a reason and logs it.", href: "/admin" },
+  { id: "Ops", what: "Same products every time?", how: "Run a few searches, then Admin → Ops → Exposure: the share of cards taken by the top 5 products (warns above 50%), and live products per age band × kind of thing, with thin cells highlighted.", href: "/admin/ops" },
   { id: "B4", what: "Scraper, fixtures, regression", how: "Admin → Scraper: scrape a sample URL, run the regression suite, then tick “simulate an adapter bug” and run it again.", href: "/admin/scraper" },
   { id: "B4", what: "Changed values need approval", how: "Scraper → Run refresh on Tinker & Co, then open Approvals. Until approved the product page keeps the old price.", href: "/admin/diffs" },
-  { id: "B5", what: "No raw chat stored, provider register, deletion", how: "Inspector shows what is persisted: coded slots only (age band, budget, category, interests, gift or own, occasion, boy or girl), never chat text. Admin → Ops has the register. Account → Delete account.", href: "/admin/ops" },
+  { id: "B5", what: "No raw chat stored, provider register, deletion", how: "Inspector shows what is persisted: coded slots only (age band, budget, category, interests, gift or own, occasion, boy or girl, personalisable), never chat text. Impressions and chat counts are product ids and numbers only. Admin → Ops has the register. Account → Delete account.", href: "/admin/ops" },
   { id: "Cost", what: "Spend cap and alerts", how: "Admin → Ops: set the model daily cap to ₹0.02, then type “five yr old likes dinasaurs” a few times. Alerts fire once at 50%, 80% and 100%; at 100% the model switches itself off and chat carries on with the free rules.", href: "/admin/ops" },
   { id: "Cost", what: "Guest limits", how: "5 typed messages per guest chat, and 15 per device per day across chats (New chat does not reset it). Then the guest is asked to sign in; pills keep working. Both caps are in Admin → Ops.", href: "/admin/ops" },
   { id: "Money", what: "Is it working?", how: "Admin → Events shows the three numbers: share of chats that end in a brand click, clicks per chat, and sales reported by brands (import a sample in Admin → CSV → Brand sales report).", href: "/admin/events" },
@@ -60,7 +60,7 @@ export default function HowItWorks() {
               <div className="box">Brand URL or CSV</div><span className="arrow">→</span>
               <div className="box">Scraper adapter<br /><span className="muted small">Shopify · schema.org · CSV</span></div><span className="arrow">→</span>
               <div className="box">Admin review<br /><span className="muted small">profile · reasons · evidence</span></div><span className="arrow">→</span>
-              <div className="box">Publish gate<br /><span className="muted small">age · price · URL · route · evidence</span></div><span className="arrow">→</span>
+              <div className="box">Publish gate<br /><span className="muted small">name · photo · age · price · URL · route · evidence</span></div><span className="arrow">→</span>
               <div className="box" style={{ background: "#fff4cf" }}><b>Catalogue</b></div>
             </div>
           </div>
@@ -68,11 +68,11 @@ export default function HowItWorks() {
             <b>Parent lane (every session)</b>
             <div className="flow" style={{ marginTop: 6 }}>
               <div className="box">Chat / taps<br /><span className="muted small">typed text + picked pills</span></div><span className="arrow">→</span>
-              <div className="box">Guards<br /><span className="muted small">caps · length</span></div><span className="arrow">→</span>
+              <div className="box">Guards<br /><span className="muted small">chat · device · spend caps · length</span></div><span className="arrow">→</span>
               <div className="box">Rules parser<br /><span className="muted small">free · taps skip it</span></div><span className="arrow">→</span>
               <div className="box" style={{ borderStyle: "dashed" }}>Small model<br /><span className="muted small">only if rules can&apos;t</span></div><span className="arrow">→</span>
-              <div className="box">Filter + rank<br /><span className="muted small">deterministic SQL</span></div><span className="arrow">→</span>
-              <div className="box">Result cards<br /><span className="muted small">reason by tag</span></div><span className="arrow">→</span>
+              <div className="box">Filter + rank<br /><span className="muted small">deterministic SQL · ≤1 sponsored</span></div><span className="arrow">→</span>
+              <div className="box">Result cards<br /><span className="muted small">reason by tag · follow-up pills</span></div><span className="arrow">→</span>
               <div className="box">Product page</div><span className="arrow">→</span>
               <div className="box">Redirect log</div><span className="arrow">→</span>
               <div className="box">Brand site</div>
@@ -95,6 +95,10 @@ export default function HowItWorks() {
             <tr><td>Google sign-in</td><td>Fake account chooser</td><td>Google OAuth through Auth.js</td></tr>
             <tr><td>Brand sites, photos, certificates</td><td>Invented (emoji art, fake PDFs)</td><td>Real, with authorisation records</td></tr>
             <tr><td>Parental consent</td><td>Tick box placeholder</td><td>Standard to be set by the Client</td></tr>
+            <tr><td>Spend alerts and caps</td><td><b>Real rules</b>; alerts are on-screen toasts</td><td>Email alerts plus a hard cap at the model provider</td></tr>
+            <tr><td>Guest daily limit</td><td>Counter in this browser</td><td>Per device and per IP, server side</td></tr>
+            <tr><td>Wishlist sharing</td><td>Link carries product ids; &ldquo;Bought&rdquo; is remembered per browser</td><td>List stored server side behind a random link; &ldquo;Bought&rdquo; shared by everyone</td></tr>
+            <tr><td>Sales numbers</td><td>Brand sales report imported by CSV</td><td>Same, from each brand&apos;s own reports (no tracking on brand sites)</td></tr>
           </tbody>
         </table>
       </div>
