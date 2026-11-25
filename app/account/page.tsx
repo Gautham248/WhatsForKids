@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useApp } from "@/lib/store";
 import { Note } from "@/components/bits";
-import { BANDS, Band, INTERESTS, bandLabel } from "@/lib/types";
+import { BANDS, Band, INTERESTS, bandLabel, CHILD_LABELS } from "@/lib/types";
 
 const NOTICE_VERSION = "child-profile-notice v1.2";
 const NOTICE = "We will save your child's age band and chosen interests so we can pre-fill searches. We will not use them for advertising, tracking or profiling, and we never store your child's name or free text. You can withdraw consent and delete the profile at any time.";
@@ -32,22 +32,28 @@ export default function AccountPage() {
       </div>
     );
 
-  const consent = d.consents.find((c) => c.id === d.child?.consentId);
+  const consent = d.consents.find((c) => c.id === d.children[0]?.consentId);
+  const nextLabel = CHILD_LABELS.find((l) => !d.children.some((c) => c.label === l));
   const save = () => {
     update((x) => {
+      // Adding a profile re-confirms consent: a fresh record, and every profile points at it.
       const id = "c_" + Math.random().toString(36).slice(2, 8);
       x.consents.push({ id, at: new Date().toISOString(), noticeVersion: NOTICE_VERSION, noticeHash: hash(NOTICE), verificationMethod: "declaration (tick box) — demo only", withdrawnAt: null });
-      x.child = { ageBand: band, interests: ints, consentId: id };
+      x.children.forEach((c) => (c.consentId = id));
+      x.children.push({ id: "k_" + Math.random().toString(36).slice(2, 8), label: nextLabel!, ageBand: band, interests: ints, consentId: id });
     });
+    setTick(false);
+    setInts([]);
     toast("Consent recorded, profile saved");
   };
+  const removeOne = (cid: string) => update((x) => void (x.children = x.children.filter((c) => c.id !== cid)));
   const withdraw = () => {
     update((x) => {
-      const c = x.consents.find((q) => q.id === x.child?.consentId);
-      if (c) c.withdrawnAt = new Date().toISOString();
-      x.child = null;
+      const ids = new Set(x.children.map((c) => c.consentId));
+      x.consents.forEach((q) => { if (ids.has(q.id) && !q.withdrawnAt) q.withdrawnAt = new Date().toISOString(); });
+      x.children = [];
     });
-    toast("Consent withdrawn, profile deleted");
+    toast("Consent withdrawn, all profiles deleted");
   };
   const del = () => {
     if (!confirm("Delete this demo account and all its data?")) return;
@@ -56,7 +62,7 @@ export default function AccountPage() {
       x.user = null;
       x.saved = [];
       x.history = [];
-      x.child = null;
+      x.children = [];
       x.consents = [];
     });
     setDeleted(true);
@@ -77,21 +83,31 @@ export default function AccountPage() {
       </div>
 
       <div className="card">
-        <h2>Child profile (optional)</h2>
+        <h2>Child profiles (optional)</h2>
         <Note>
           Table <code>child_profile</code> holds <b>age band + controlled-vocabulary interests only</b>. Saving requires a <code>consent_record</code> first (B5). It only pre-fills searches; it is never used for ads, ranking history or behavioural tracking (DPDP s9(3)).
         </Note>
-        {d.child ? (
+        {d.children.length > 0 && (
           <>
-            <p>
-              Saved profile: age <b>{bandLabel(d.child.ageBand)}</b>, interests: {d.child.interests.length ? d.child.interests.map((i) => INTERESTS[i]).join(", ") : "none"}.
-            </p>
-            <b className="small">Consent record</b>
+            <ul>
+              {d.children.map((c) => (
+                <li key={c.id} className="row" style={{ gap: 8 }}>
+                  <span><b>{c.label}</b>: age {bandLabel(c.ageBand)}, interests: {c.interests.length ? c.interests.map((i) => INTERESTS[i]).join(", ") : "none"}</span>
+                  <button className="btn sm" onClick={() => removeOne(c.id)}>Delete</button>
+                </li>
+              ))}
+            </ul>
+            <p className="small muted">Profiles are labelled Child 1, Child 2… on purpose: no names, birth dates or photos.</p>
+            <b className="small">Consent record (covers all profiles)</b>
             <pre>{JSON.stringify(consent, null, 2)}</pre>
-            <button className="btn danger" style={{ marginTop: 8 }} onClick={withdraw}>Withdraw consent and delete profile</button>
+            <button className="btn danger" style={{ marginTop: 8 }} onClick={withdraw}>Withdraw consent and delete all profiles</button>
           </>
+        )}
+        {!nextLabel ? (
+          <p className="small muted">Up to {CHILD_LABELS.length} profiles.</p>
         ) : (
           <>
+            {d.children.length > 0 && <h3 style={{ marginTop: 16 }}>Add {nextLabel}</h3>}
             <div className="grid g2">
               <label className="f">Age band
                 <select value={band} onChange={(e) => setBand(e.target.value as Band)}>
@@ -120,7 +136,7 @@ export default function AccountPage() {
                 Under DPDP, verifiable parental consent means verifying that the consenting adult is an adult and the parent. A tick box does not do that. Schedule B leaves the consent standard to the Client, so <code>verification_method</code> is a pluggable field. Get the Client&apos;s chosen standard in writing before building the real screen.
               </p>
             </div>
-            <button className="btn primary" disabled={!tick} onClick={save}>Save profile and record consent</button>
+            <button className="btn primary" disabled={!tick} onClick={save}>{d.children.length ? `Add ${nextLabel} and re-confirm consent` : "Save profile and record consent"}</button>
           </>
         )}
       </div>

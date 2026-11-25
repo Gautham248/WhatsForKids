@@ -12,7 +12,7 @@ import { todayOf } from "./gate";
 import { clearRankCache } from "./rank";
 import { slotKey } from "./parser";
 
-const KEY = "wfk-demo-v3";
+const KEY = "wfk-demo-v4";
 
 interface Ctx {
   d: Data;

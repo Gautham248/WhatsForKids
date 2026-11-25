@@ -41,6 +41,7 @@ export function ProductCard({ p, pos, info }: { p: Product; pos: number; info?: 
         <div>
           <b>{inr(p.price)}</b> <span className="muted small">as researched</span>
         </div>
+        {p.personalisation && <div><span className="badge" title={p.personalisation}>Can be personalised</span></div>}
         {info?.reason && <div className="reason">{info.reason}</div>}
         {info?.note && <div className="evid">Evidence on file: {info.note}</div>}
         {info?.tag && !info.note && (

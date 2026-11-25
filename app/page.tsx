@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useApp } from "@/lib/store";
 import { ProductCard, Note } from "@/components/bits";
 import Inspector from "@/components/Inspector";
-import { Act, Pill, PillGroup } from "@/lib/chat";
+import { Act, Pill, PillGroup, profilePills } from "@/lib/chat";
 import { bandLabel } from "@/lib/types";
 
 export default function ChatPage() {
@@ -105,13 +105,14 @@ export default function ChatPage() {
           <Note>
             Parent lane, every turn: guards → rules parser or tap → (model only if needed) → SQL filters + ranking → templated reply. Open the <b>Inspector</b> to follow each step.
           </Note>
-          {d.child && !chat.slots.age && (
+          {d.children.length > 0 && !chat.slots.age && (
             <div className="card small" style={{ marginBottom: 8 }}>
-              Child profile found: age {bandLabel(d.child.ageBand)}
-              {d.child.interests.length ? `, likes ${d.child.interests.join(", ")}` : ""}. It only pre-fills the search; it is never used for ads or tracking.{" "}
-              <button className="btn sm" onClick={() => act({ t: "profile" })}>
-                Use it
-              </button>
+              {d.children.length === 1 ? "Child profile found" : `${d.children.length} child profiles found`}. A profile only pre-fills the search; it is never used for ads or tracking.{" "}
+              {profilePills(d).map((p, i) => (
+                <button key={i} className="btn sm" style={{ marginLeft: 4 }} onClick={() => act(p.act)}>
+                  {p.label}
+                </button>
+              ))}
             </div>
           )}
           <div className="msgs">

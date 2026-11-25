@@ -6,6 +6,8 @@ import { initialChat, runTurn, Act } from "../lib/chat";
 import { visibility, publishGate, todayOf } from "../lib/gate";
 import { recordSpend, chatMetrics } from "../lib/admin";
 import { parseSalesCsv } from "../lib/csv";
+import { encodeWishlist, decodeWishlist, WISHLIST_TITLES } from "../lib/wishlist";
+import { profilePills } from "../lib/chat";
 import { search, countImpressions, exposure } from "../lib/rank";
 
 let fails = 0;
@@ -251,6 +253,54 @@ console.log("search age 6-8:", search(d, { age: "6-8" }).ranked.map((r) => d.pro
   const lc = card.msgs[card.msgs.length - 1];
   const sp = Object.entries(lc.cardInfo ?? {}).filter(([, i]) => i.sponsored);
   ok(sp.length <= 1 && sp.every(([id]) => lc.cards!.indexOf(id) === 1), "chat card marks the sponsored item, at position 2");
+}
+
+// phase 4: several child profiles, wishlist codes, personalisation
+{
+  const e = makeSeed(new Date());
+  const last = (c: ReturnType<typeof initialChat>) => c.msgs[c.msgs.length - 1];
+  ok(Array.isArray(e.children) && e.children.length === 0 && !("child" in e), "seed: children list, no single child field");
+  e.children = [
+    { id: "k1", label: "Child 1", ageBand: "3-5", interests: ["dinosaurs"], consentId: "c1" },
+    { id: "k2", label: "Child 2", ageBand: "9-12", interests: [], consentId: "c1" },
+  ];
+  const pills = profilePills(e);
+  ok(pills.length === 2 && pills.every((p) => /^Use Child \d's profile/.test(p.label)), "two profiles → two profile pills, labels not names: " + pills.map((p) => p.label).join(" | "));
+  let c = runTurn(e, initialChat(), { kind: "text", text: "a gift idea" }).chat;
+  ok((last(c).pills ?? []).filter((p) => p.act.t === "profile").length === 2, "age-missing reply offers both profiles");
+  c = runTurn(e, c, { kind: "act", act: { t: "profile", id: "k2" } }).chat;
+  ok(c.slots.age === "9-12" && c.slots.recipient === "own", "picking Child 2 fills that child's age");
+  c = runTurn(e, initialChat(), { kind: "act", act: { t: "profile", id: "k1" } }).chat;
+  ok(c.slots.age === "3-5" && c.slots.interests?.[0] === "dinosaurs", "picking Child 1 fills age and interests");
+  e.children = e.children.filter((k) => k.id !== "k1");
+  ok(profilePills(e).length === 1 && profilePills(e)[0].label.includes("Child 2"), "deleting one profile leaves the other");
+  ok(runTurn(e, initialChat(), { kind: "act", act: { t: "profile", id: "gone" } }).chat.slots.age === "9-12", "unknown profile id with one profile left: uses that one");
+  e.children = [];
+  ok(!runTurn(e, initialChat(), { kind: "act", act: { t: "profile", id: "k2" } }).chat.slots.age, "no profiles: profile act changes nothing");
+
+  const known = e.products.map((p) => p.id);
+  const ids = ["p-kite", "p-gear-set", "p-story-box"];
+  const code = encodeWishlist(0, ids);
+  const back = decodeWishlist(code, known);
+  ok(back?.title === WISHLIST_TITLES[0] && back.productIds.join() === ids.join() && back.dropped === 0, "wishlist: encode → decode round trip (" + code + ")");
+  ok(!JSON.stringify(back).match(/user|email|name|child/i), "wishlist: decoded data carries no user or child data");
+  const stale = decodeWishlist(code, known.filter((k) => k !== "p-gear-set"));
+  ok(stale?.productIds.join() === "p-kite,p-story-box" && stale.dropped === 1, "wishlist: unknown or unavailable id skipped");
+  ok(["", "x", "9.abc", "0.!!!", "0." + btoa("<script>"), "0.%%%"].every((bad) => decodeWishlist(bad, known) === null), "wishlist: malformed codes → null, no crash");
+  ok(decodeWishlist(encodeWishlist(99, ids), known)?.title === WISHLIST_TITLES[WISHLIST_TITLES.length - 1], "wishlist: out-of-range title falls back to the generic title");
+  ok(decodeWishlist(encodeWishlist(0, Array.from({ length: 50 }, (_, i) => known[i % known.length])), known)!.productIds.length <= 30, "wishlist: capped at 30 items");
+
+  const pp = rulesParse("personalised name puzzle for a 4 year old");
+  ok(pp.slots.personalisable === true && pp.slots.age === "3-5" && !needsLlm(pp).llm, "parser: 'personalised' sets the personalisable slot");
+  const r = search(e, { age: "3-5", personalisable: true });
+  ok(r.ranked.length > 0 && r.ranked.every((x) => !!e.products.find((p) => p.id === x.id)!.personalisation), "personalisable search: every result has a personalisation note");
+  const none = search(e, { age: "13+", personalisable: true });
+  ok(!none.ranked.length && none.relax.some((x) => x.patch === "personalisable"), "no personalisable match: offers to relax just that");
+  const g = runTurn(e, initialChat(), { kind: "text", text: "something for a 4 year old" }).chat;
+  const ex = last(g).groups?.find((x) => x.key === "extras");
+  ok(!!ex && ex.pills[0].act.t === "personal", "refine groups include 'Can be personalised'");
+  const g2 = runTurn(e, g, { kind: "act", act: ex!.pills[0].act }).chat;
+  ok(g2.slots.personalisable === true && !last(g2).groups?.some((x) => x.key === "extras") && /can be personalised/.test(last(g2).text), "tapping it filters and the pill goes away");
 }
 console.log(fails ? `${fails} FAILED` : "ALL OK");
 process.exit(fails ? 1 : 0);

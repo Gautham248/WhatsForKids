@@ -174,6 +174,12 @@ export function rulesParse(text: string): Parse {
   else if (girl && !boy) slots.gender = "girl" as Gender;
   if (slots.gender) hit(boy ?? girl);
 
+  const pers = t.match(/\b(personali[sz]\w*|customi[sz]ed?|engrav\w*|name on (it|the \w+)|with (their|his|her|a) name)\b/)?.[0];
+  if (pers) {
+    slots.personalisable = true;
+    hit(pers);
+  }
+
   const cert = t.match(CERT_RE)?.[0];
   const hasSlots = Object.keys(slots).length > 0 || clear.length > 0;
   let intent: Intent = "other";
@@ -281,7 +287,7 @@ export function mergeSlots(prev: Slots, inc: Slots, clear: (keyof Slots)[] = [],
 }
 
 export const slotKey = (s: Slots) =>
-  [`age=${s.age ?? ""}`, `cat=${s.category ?? ""}`, `max=${s.budget ?? ""}`, `int=${[...(s.interests ?? [])].sort().join("+")}`, `for=${s.recipient ?? ""}`, `occ=${s.occasion ?? ""}`, `g=${s.gender ?? ""}`].join("|");
+  [`age=${s.age ?? ""}`, `cat=${s.category ?? ""}`, `max=${s.budget ?? ""}`, `int=${[...(s.interests ?? [])].sort().join("+")}`, `for=${s.recipient ?? ""}`, `occ=${s.occasion ?? ""}`, `g=${s.gender ?? ""}`, `pers=${s.personalisable ? 1 : ""}`].join("|");
 
 export function describeSlots(s: Slots): string {
   const parts: string[] = [];
@@ -290,6 +296,7 @@ export function describeSlots(s: Slots): string {
   if (s.budget) parts.push(budgetLabel(s.budget).toLowerCase());
   if (s.interests?.length) parts.push(`loves ${s.interests.map((i) => INTERESTS[i].toLowerCase()).join(" and ")}`);
   if (s.recipient === "gift") parts.push(s.occasion === "birthday" ? "birthday gift" : s.occasion === "return_gift" ? "return gift" : s.occasion === "festival" ? "festival gift" : "gift");
+  if (s.personalisable) parts.push("can be personalised");
   if (s.gender) parts.push(`for a ${s.gender}`);
   if (s.recipient === "own" && !parts.length) parts.push("for your child");
   return parts.join(" · ");

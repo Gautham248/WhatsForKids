@@ -105,6 +105,13 @@ const SKILL: Record<string, string> = {
   sensory: "Gentle textures to explore at the child's own pace",
 };
 
+// Curator notes for products the brand can personalise. The name is chosen on the brand's site; we never ask for it.
+const PERSONALISE: Record<string, string> = {
+  "rainbow-stacker": "Child's name engraved on the base, chosen on the brand's site",
+  "story-box": "A name printed on each book's cover, chosen on the brand's site",
+  "dino-puzzle": "A name printed in the puzzle's corner piece, chosen on the brand's site",
+};
+
 const PLAY: Record<string, [string, string][]> = {
   building: [["Build a home", "Make a house for a toy. What does it need?"], ["Tallest tower", "Take turns adding one piece. Who makes it wobble?"], ["Copy me", "Build something small, then ask your child to copy it."]],
   pretend: [["Open for business", "Run a shop or cafe. Who is the customer today?"], ["Story time", "Act out a favourite book using what is in the set."], ["Swap roles", "Let your child be the grown-up and give you instructions."]],
@@ -194,6 +201,7 @@ export function makeSeed(now: Date): Data {
     price: p.price,
     priceAsOf: day(-(p.checked ?? 4)),
     emoji: p.emoji,
+    personalisation: PERSONALISE[p.id],
     // Gear set pays for placement and qualifies on merit; magnetic tiles pays too but is not published, so it never shows.
     sponsored: p.id === "gear-set" || p.id === "magnetic-tiles" ? { until: day(60) } : undefined,
     // Fairy wings (still in Discovered) has no photo yet, so the publish gate shows the photo check failing.
@@ -278,7 +286,7 @@ export function makeSeed(now: Date): Data {
   const log = products.map((p, i) => ({ id: `l-${i}`, productId: p.id, from: null, to: p.status, at: day(-30), actor: "Seed (demo)" }));
 
   return {
-    v: 3,
+    v: 4,
     baseDate: isoDay(now),
     brands,
     products,
@@ -296,7 +304,7 @@ export function makeSeed(now: Date): Data {
     user: null,
     saved: [],
     history: [],
-    child: null,
+    children: [],
     consents: [],
     deletionRequests: [],
     ops: { llmDisabled: false, clockOffsetDays: 0, breakAdapter: false, guestCap: 5, userCap: 10, catalogueVersion: 1, llmCalls: 0, llmCostRs: 0, annotate: false, inspector: false, limitSpecific: 3, limitVague: 6, exposureWarnPct: 50, minPerCell: 3, dailyCapRs: 25, monthlyBudgetRs: 500, spendByDay: {}, alerts: [], guestDailyCap: 15, sponsoredOn: true },

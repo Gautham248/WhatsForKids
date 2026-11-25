@@ -17,7 +17,7 @@ export interface Ranked extends Scored {
 }
 export interface Relax {
   label: string;
-  patch: "budget" | "category";
+  patch: "budget" | "category" | "personalisable";
   n: number;
 }
 export interface SearchResult {
@@ -34,7 +34,7 @@ const cache = new Map<string, Scored[]>(); // in-process LRU in production; a pl
 export const clearRankCache = () => cache.clear();
 export const cacheSize = () => cache.size;
 
-function candidates(d: Data, s: Slots, skip: { budget?: boolean; category?: boolean } = {}) {
+function candidates(d: Data, s: Slots, skip: { budget?: boolean; category?: boolean; personalisable?: boolean } = {}) {
   const funnel: { label: string; n: number }[] = [];
   let list = d.products.filter((p) => visibility(d, p).visible);
   funnel.push({ label: "Published and visible (evidence, route, freshness)", n: list.length });
@@ -45,6 +45,10 @@ function candidates(d: Data, s: Slots, skip: { budget?: boolean; category?: bool
   if (s.budget && !skip.budget) {
     list = list.filter((p) => p.price <= s.budget!);
     funnel.push({ label: `Price up to ₹${s.budget}`, n: list.length });
+  }
+  if (s.personalisable && !skip.personalisable) {
+    list = list.filter((p) => !!p.personalisation);
+    funnel.push({ label: "Can be personalised", n: list.length });
   }
   if (s.category && !skip.category) {
     list = list.filter((p) => p.category === s.category);
@@ -138,6 +142,10 @@ export function search(d: Data, slots: Slots, shown: string[] = []): SearchResul
     if (slots.category) {
       const n = candidates(d, slots, { category: true }).list.length;
       if (n) relax.push({ label: "Any category", patch: "category", n });
+    }
+    if (slots.personalisable) {
+      const n = candidates(d, slots, { personalisable: true }).list.length;
+      if (n) relax.push({ label: "Not just personalisable", patch: "personalisable", n });
     }
   }
   return { ranked: picked, funnel, cache: hit ? "HIT" : "MISS", key, limit, relax, total: list.length };

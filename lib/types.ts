@@ -29,6 +29,7 @@ export interface Slots {
   recipient?: Recipient;
   occasion?: Occasion;
   gender?: Gender;
+  personalisable?: boolean; // only products the brand can personalise (name chosen on the brand's site)
 }
 
 export const CATEGORIES: Record<string, string> = {
@@ -115,7 +116,8 @@ export interface Product {
   price: number; // rupees
   priceAsOf: string; // ISO date
   emoji: string;
-  sponsored?: { until: string }; // paid placement window. Only ever shown if the product already qualifies on merit.
+  sponsored?: { until: string };
+  personalisation?: string; // curator note, e.g. "Name printed on the lid, chosen on the brand's site" // paid placement window. Only ever shown if the product already qualifies on merit.
   photo?: string; // product photo URL; required to publish. Optional only so older saved data still loads.
   color: string;
   category: string;
@@ -218,10 +220,13 @@ export interface HistoryEntry {
 }
 
 export interface ChildProfile {
+  id: string;
+  label: string; // "Child 1", "Child 2"… from a fixed list, never a name
   ageBand: Band;
   interests: string[];
   consentId: string;
 }
+export const CHILD_LABELS = ["Child 1", "Child 2", "Child 3", "Child 4", "Child 5"];
 export interface Consent {
   id: string;
   at: string;
@@ -309,7 +314,7 @@ export interface Data {
   user: User | null;
   saved: string[];
   history: HistoryEntry[];
-  child: ChildProfile | null;
+  children: ChildProfile[]; // several profiles, one consent record covers them
   consents: Consent[];
   deletionRequests: { at: string; note: string }[];
   ops: Ops;

@@ -19,8 +19,11 @@ export default function OutPage() {
   useEffect(() => {
     if (done.current || !p || !vis.visible || !route || route.status !== "active" || sessionId === "s_pending") return;
     done.current = true;
-    const pos = Number(new URLSearchParams(window.location.search).get("pos") ?? "1") || 1;
-    const e: RedirectEvent = { id: "ev_" + Math.random().toString(36).slice(2, 9), at: new Date().toISOString(), productId: p.id, routeKind: route.kind, position: pos, sessionId, chatId, source: "chat", slots: chat.slots };
+    const q = new URLSearchParams(window.location.search);
+    const pos = Number(q.get("pos") ?? "1") || 1;
+    const fromList = q.get("src") === "wishlist";
+    // A wishlist click is not part of any chat: no chat id, no slots.
+    const e: RedirectEvent = { id: "ev_" + Math.random().toString(36).slice(2, 9), at: new Date().toISOString(), productId: p.id, routeKind: route.kind, position: pos, sessionId, chatId: fromList ? undefined : chatId, source: fromList ? "wishlist" : "chat", slots: fromList ? {} : chat.slots };
     update((x) => void x.events.unshift(e));
     setEv(e);
   }, [p, vis.visible, route, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps

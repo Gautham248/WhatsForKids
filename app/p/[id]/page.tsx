@@ -114,6 +114,14 @@ export default function ProductPage() {
         </>
       )}
 
+      {p.personalisation && (
+        <div className="section card">
+          <h2>Can be personalised</h2>
+          <p>{p.personalisation}.</p>
+          <p className="small muted">You choose the name or message on the brand&apos;s site when you buy. We never ask for your child&apos;s name.</p>
+        </div>
+      )}
+
       <div className="section card">
         <h2>Product details</h2>
         <dl className="kvt">

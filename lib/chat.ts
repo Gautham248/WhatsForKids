@@ -14,8 +14,9 @@ export type Act =
   | { t: "gender"; g: Gender }
   | { t: "occasion"; o: Occasion }
   | { t: "multi"; acts: Act[] }
-  | { t: "relax"; what: "budget" | "category" }
-  | { t: "profile" }
+  | { t: "relax"; what: "budget" | "category" | "personalisable" }
+  | { t: "personal" }
+  | { t: "profile"; id?: string }
   | { t: "load"; slots: Slots }
   | { t: "reset" }
   | { t: "login" }
@@ -95,8 +96,9 @@ export function actLabel(a: Act): string {
     case "recipient": return a.r === "gift" ? "It's a gift" : "For my child";
     case "gender": return a.g === "boy" ? "Boy" : "Girl";
     case "occasion": return OCCASION_LABEL[a.o];
-    case "relax": return `Any ${a.what === "budget" ? "budget" : "category"}`;
-    case "profile": return "Use my child's profile";
+    case "relax": return a.what === "personalisable" ? "Not just personalisable" : `Any ${a.what === "budget" ? "budget" : "category"}`;
+    case "personal": return "Can be personalised";
+    case "profile": return "Use a child profile";
     case "load": return "Re-run a saved search";
     case "login": return "Sign in";
     case "multi": return a.acts.map(actLabel).join(" · ");
@@ -115,9 +117,13 @@ function applyAct(d: Data, s: Slots, a: Act): Slots {
     case "recipient": return mergeSlots(s, { recipient: a.r });
     case "gender": return mergeSlots(s, { gender: a.g });
     case "occasion": return mergeSlots(s, { occasion: a.o, recipient: "gift" }); // an occasion implies a gift
-    case "relax": return mergeSlots(s, {}, [a.what === "budget" ? "budget" : "category"]);
+    case "relax": return mergeSlots(s, {}, [a.what]);
+    case "personal": return mergeSlots(s, { personalisable: true });
     case "load": return { ...a.slots };
-    case "profile": return d.child ? mergeSlots(s, { age: d.child.ageBand, interests: d.child.interests.slice(0, 2), recipient: "own" }) : s;
+    case "profile": {
+      const c = d.children.find((x) => x.id === a.id) ?? (d.children.length === 1 ? d.children[0] : undefined);
+      return c ? { ...mergeSlots(s, { age: c.ageBand, recipient: "own" }), interests: c.interests.slice(0, 2).length ? c.interests.slice(0, 2) : s.interests } : s;
+    }
     case "multi": {
       // Interests picked together replace the old ones (up to 2) instead of being pushed out one by one.
       const ints = a.acts.filter((x): x is { t: "interest"; i: string } => x.t === "interest").map((x) => x.i);
@@ -163,6 +169,8 @@ function followUpGroups(d: Data, s: Slots, resultIds?: string[]): PillGroup[] {
   // Shown alongside "Who it's for" so a gift and its occasion can be picked in the same round.
   if (s.recipient !== "own" && !s.occasion) g.push(occasionGroup());
   if (!s.gender) g.push(genderGroup());
+  if (!s.personalisable && d.products.some((p) => p.personalisation && p.status === "published"))
+    g.push({ key: "extras", label: "Extras", mode: "many", pills: [{ label: "Can be personalised", act: { t: "personal" } }] });
   return g;
 }
 const hintFor = (s: Slots) => {
@@ -170,6 +178,10 @@ const hintFor = (s: Slots) => {
   const ex: Record<string, string> = { age: "she's 6", budget: "under 1000", interests: "loves space", recipient: "it's a birthday gift", gender: "for a boy" };
   return gaps.length ? `e.g. ${gaps.slice(0, 3).map((x) => ex[x]).join(", ")}` : "e.g. something for outdoors instead";
 };
+
+/** One "use profile" pill per saved child profile. Labels only ("Child 1"), never a name. */
+export const profilePills = (d: Data): Pill[] =>
+  d.children.map((c) => ({ label: `Use ${c.label}'s profile (${bandLabel(c.ageBand).replace(" years", "")})`, act: { t: "profile", id: c.id } as Act }));
 
 const agePills = (): Pill[] => BANDS.map((b) => ({ label: bandLabel(b).replace(" years", ""), act: { t: "age", band: b } as Act }));
 
@@ -228,7 +240,7 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
   const respond = (via: Omit<TurnInfo, "before" | "after" | "costRs" | "notes">, costRs = 0) => {
     const s = chat.slots;
     if (!s.age) {
-      const profile = d.child ? [{ label: `Use my child's profile (${bandLabel(d.child.ageBand).replace(" years", "")})`, act: { t: "profile" } as Act }] : [];
+      const profile = profilePills(d);
       const more = missingSlots(s).filter((x) => x !== "age");
       const tail = more.length ? ` If you like, also tell me ${askFor(more)}.` : "";
       say({ text: `${describeSlots(s) ? `Got it: ${describeSlots(s)}. ` : ""}How old is the child?${tail} Type it, or pick below.`, groups: followUpGroups(d, s), pills: profile, hint: hintFor(s) });
