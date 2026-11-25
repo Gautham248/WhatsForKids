@@ -101,6 +101,7 @@ export default function ProductPage() {
           </div>
           <div className="section card">
             <h2>Ways to play together</h2>
+            {profile.playSource === "type" && <p className="small muted" style={{ marginTop: -4 }}>General ideas for this kind of toy, not specific to this product.</p>}
             <div className="grid g3">
               {profile.play.map((x, i) => (
                 <div key={i}>
@@ -120,11 +121,12 @@ export default function ProductPage() {
           <dt>Brand</dt><dd>{brand.name}</dd>
           <dt>Price</dt><dd>{inr(p.price)} (as researched {p.priceAsOf})</dd>
           <dt>Recommended age</dt><dd>{ageText(p.ageMin, p.ageMax)}</dd>
-          <dt>Material</dt><dd>{p.material || "Not yet confirmed"}</dd>
-          <dt>Pieces</dt><dd>{p.pieces || "Not listed"}</dd>
+          {p.material && <><dt>Material</dt><dd>{p.material}</dd></>}
+          {p.pieces && <><dt>Pieces</dt><dd>{p.pieces}</dd></>}
           <dt>Availability</dt><dd>{p.availability}</dd>
-          <dt>Cleaning</dt><dd>{p.cleaning || "Not listed"}</dd>
+          {p.cleaning && <><dt>Cleaning</dt><dd>{p.cleaning}</dd></>}
         </dl>
+        <Note>Rows with nothing confirmed (material, pieces, cleaning) are hidden rather than filled in. An empty section is better than a made-up one.</Note>
         <Note>Fixes the sample page: recommended age is its own row, and availability no longer mentions real-time scraping (B4 offers weekly refresh only).</Note>
       </div>
 

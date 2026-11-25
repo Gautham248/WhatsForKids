@@ -4,7 +4,7 @@ import { rulesParse, needsLlm, llmParse, missingSlots } from "../lib/parser";
 import { regression, refreshBrand, scrapeUrl } from "../lib/scraper";
 import { initialChat, runTurn, Act } from "../lib/chat";
 import { visibility, publishGate } from "../lib/gate";
-import { search } from "../lib/rank";
+import { search, countImpressions, exposure } from "../lib/rank";
 
 let fails = 0;
 const ok = (c: unknown, m: string) => { if (!c) { fails++; console.log("FAIL", m); } else console.log("ok  ", m); };
@@ -151,6 +151,40 @@ console.log("search age 6-8:", search(d, { age: "6-8" }).ranked.map((r) => d.pro
   ok(tap.slots.category === "books" && tap.slots.age === "0-2", "related-search pill runs that search");
   const vacc = runTurn(d, initialChat(), { kind: "text", text: "do babies need vaccines" }).chat;
   ok(!(last(vacc).pills ?? []).some((p) => / for |books|play/i.test(p.label)), "unmapped advice topic: no related-search pill");
+}
+
+// phase 2: impressions, exposure, gate name/brand/photo, general play ideas
+{
+  const e = makeSeed(new Date());
+  const z = exposure(e);
+  ok(z.total === 0 && z.topShare === 0 && !z.warn && !Number.isNaN(z.topShare), "exposure with 0 impressions: no NaN, no warning");
+  const out = runTurn(e, initialChat(), { kind: "text", text: "something for a 6 year old" });
+  const ids = out.shownIds ?? [];
+  ok(ids.length > 0 && ids.join() === (out.chat.msgs[out.chat.msgs.length - 1].cards ?? []).join(), "turn reports exactly the card ids it showed");
+  countImpressions(e, ids);
+  countImpressions(e, ids.slice(0, 1));
+  ok(e.impressions![ids[0]] === 2 && (ids.length < 2 || e.impressions![ids[1]] === 1), "impressions add 1 per card shown");
+  const before = JSON.stringify(e.impressions);
+  runTurn(e, out.chat, { kind: "act", act: { t: "reset" } });
+  ok(JSON.stringify(e.impressions) === before, "resetting a chat does not reset impression counts");
+  const greet = runTurn(e, initialChat(), { kind: "text", text: "hello" });
+  ok((greet.shownIds ?? []).length === 0, "no cards, no impressions");
+  e.impressions = { a: 90, b: 5, c: 5 };
+  ok(exposure(e).warn && Math.abs(exposure(e).topShare - 1) < 1e-9, "3 products only: top-5 share 100%, warns");
+  e.impressions = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`p${i}`, 5]));
+  ok(Math.abs(exposure(e).topShare - 0.25) < 1e-9 && !exposure(e).warn, "even spread over 20: top-5 share 25%, no warning");
+  const cells = exposure(e).grid;
+  ok(cells.length === 50 && cells.some((c) => c.low) && cells.every((c) => c.low === c.n < 3), "catalogue grid: 5 bands × 10 kinds, low = below minimum");
+
+  const wings = e.products.find((p) => p.id === "p-fairy-wings")!;
+  ok(publishGate(e, wings).find((g) => g.key === "photo")?.ok === false, "gate: product with no photo fails 'photo set'");
+  const stacker2 = e.products.find((p) => p.id === "p-rainbow-stacker")!;
+  ok(publishGate(e, stacker2).every((g) => g.ok), "gate: seeded live product still passes all checks");
+  const orphan = { ...stacker2, brandId: "b-missing" };
+  ok(publishGate(e, orphan).find((g) => g.key === "name")?.ok === false, "gate: product with no brand fails 'name and brand'");
+  ok(publishGate(e, { ...stacker2, name: "  " }).find((g) => g.key === "name")?.ok === false, "gate: blank name fails");
+  ok(e.profiles["p-blocks-100"]?.playSource === "type", "drafted play ideas are marked as general ideas for the type");
+  ok(e.profiles["p-rainbow-stacker"]?.playSource === "product", "hand-written play ideas are marked as product-specific");
 }
 console.log(fails ? `${fails} FAILED` : "ALL OK");
 process.exit(fails ? 1 : 0);

@@ -131,6 +131,9 @@ const POINTS: Record<string, [string, string][]> = {
   sensory: [["Different textures", "Children can compare how things feel."], ["Calm play", "Slow, repeating actions suit quiet moments."], ["Bath and tray friendly", "Easy to use in simple set-ups."]],
 };
 
+/** General play ideas for a kind of toy. Used when the seller says little; shown labelled as general ideas. */
+export const playForType = (category: string) => (PLAY[category] ?? []).map(([title, prompt]) => ({ title, prompt }));
+
 export function profileFor(p: Product, brandName: string, source = "Curator (demo)"): Profile {
   const cat = CATEGORIES[p.category].toLowerCase();
   return {
@@ -138,7 +141,8 @@ export function profileFor(p: Product, brandName: string, source = "Curator (dem
     state: "approved",
     intro: `${p.name} is a ${cat} pick from ${brandName} for ${ageText(p.ageMin, p.ageMax)}. ${p.shortDesc}`,
     points: POINTS[p.category].map(([title, body]) => ({ title, body })),
-    play: PLAY[p.category].map(([title, prompt]) => ({ title, prompt })),
+    play: playForType(p.category),
+    playSource: "type",
     why: `We picked ${p.name} because it is simple to understand, suits ${ageText(p.ageMin, p.ageMax)}, and the brand lists clear product details. Our team read the product page and the evidence on file before publishing.`,
     source,
   };
@@ -172,6 +176,7 @@ const rainbowProfile = (p: Product): Profile => ({
     { title: "Quiet tower", prompt: "Take turns adding an arch. Who can stop it wobbling?" },
   ],
   why: "We picked this stacker because it is simple, sturdy and open-ended, it suits a wide age range, and the brand lists its materials clearly. Our team reviewed the product page and the evidence on file before publishing.",
+  playSource: "product",
   source: "Curator (demo)",
 });
 
@@ -189,6 +194,8 @@ export function makeSeed(now: Date): Data {
     price: p.price,
     priceAsOf: day(-(p.checked ?? 4)),
     emoji: p.emoji,
+    // Fairy wings (still in Discovered) has no photo yet, so the publish gate shows the photo check failing.
+    photo: p.id === "fairy-wings" ? "" : `https://cdn.example.com/${p.id}.jpg`,
     color: p.color,
     category: p.cat,
     ageMin: p.min,
@@ -269,7 +276,7 @@ export function makeSeed(now: Date): Data {
   const log = products.map((p, i) => ({ id: `l-${i}`, productId: p.id, from: null, to: p.status, at: day(-30), actor: "Seed (demo)" }));
 
   return {
-    v: 1,
+    v: 2,
     baseDate: isoDay(now),
     brands,
     products,
@@ -280,6 +287,7 @@ export function makeSeed(now: Date): Data {
     diffs: [],
     statusLog: log,
     events: [],
+    impressions: {},
     scrapeRuns: [],
     user: null,
     saved: [],
@@ -287,6 +295,6 @@ export function makeSeed(now: Date): Data {
     child: null,
     consents: [],
     deletionRequests: [],
-    ops: { llmDisabled: false, clockOffsetDays: 0, breakAdapter: false, guestCap: 5, userCap: 10, catalogueVersion: 1, llmCalls: 0, llmCostRs: 0, annotate: false, inspector: false, limitSpecific: 3, limitVague: 6 },
+    ops: { llmDisabled: false, clockOffsetDays: 0, breakAdapter: false, guestCap: 5, userCap: 10, catalogueVersion: 1, llmCalls: 0, llmCostRs: 0, annotate: false, inspector: false, limitSpecific: 3, limitVague: 6, exposureWarnPct: 50, minPerCell: 3 },
   };
 }

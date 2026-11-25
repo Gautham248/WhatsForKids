@@ -6,7 +6,7 @@ import { useApp } from "@/lib/store";
 import { Note } from "@/components/bits";
 import { assertedClaims, evidenceCurrent, evidenceState, publishGate, visibility } from "@/lib/gate";
 import { moveTo } from "@/lib/admin";
-import { disclosureFor, profileFor, reasonsFor } from "@/lib/seed";
+import { disclosureFor, playForType, profileFor, reasonsFor } from "@/lib/seed";
 import { CATEGORIES, CLAIM_LABEL, ClaimType, INTERESTS, Product, ReasonTag, RouteKind, STAGES, STAGE_LABEL, Status } from "@/lib/types";
 
 const TAGS: ReasonTag[] = ["gift", "age_fit", "budget", "skill", "interest"];
@@ -100,6 +100,7 @@ export default function Editor() {
         <h2>Details (from scrape, curator-corrected)</h2>
         <div className="grid g4">
           <label className="f">Name<input type="text" value={p.name} onChange={(e) => upd((q) => void (q.name = e.target.value))} /></label>
+          <label className="f">Photo URL<input type="text" value={p.photo ?? ""} placeholder="required to publish" onChange={(e) => upd((q) => void (q.photo = e.target.value))} /></label>
           <label className="f">Price (₹)<input type="number" value={p.price} onChange={(e) => upd((q) => { q.price = Number(e.target.value); q.priceAsOf = new Date().toISOString().slice(0, 10); })} /></label>
           <label className="f">Age from (months)<input type="number" value={p.ageMin} onChange={(e) => upd((q) => void (q.ageMin = Number(e.target.value)))} /></label>
           <label className="f">Age to (months)<input type="number" value={p.ageMax} onChange={(e) => upd((q) => void (q.ageMax = Number(e.target.value)))} /></label>
@@ -146,11 +147,15 @@ export default function Editor() {
                 </div>
               ))}
             </div>
+            <div className="row" style={{ marginTop: 8, gap: 8 }}>
+              <span className="small">Ways to play: <b>{profile.playSource === "type" ? "general ideas for this kind of toy (labelled on the page)" : "written for this product"}</b></span>
+              <button className="btn sm" onClick={() => editProfile((x) => { x.play = playForType(p.category); x.playSource = "type"; })}>Fill from product type</button>
+            </div>
             <div className="grid g3" style={{ marginTop: 8 }}>
               {profile.play.map((pt, i) => (
                 <div key={i}>
-                  <label className="f">Play idea {i + 1} title<input type="text" value={pt.title} onChange={(e) => editProfile((x) => void (x.play[i].title = e.target.value))} /></label>
-                  <textarea value={pt.prompt} onChange={(e) => editProfile((x) => void (x.play[i].prompt = e.target.value))} />
+                  <label className="f">Play idea {i + 1} title<input type="text" value={pt.title} onChange={(e) => editProfile((x) => { x.play[i].title = e.target.value; x.playSource = "product"; })} /></label>
+                  <textarea value={pt.prompt} onChange={(e) => editProfile((x) => { x.play[i].prompt = e.target.value; x.playSource = "product"; })} />
                 </div>
               ))}
             </div>

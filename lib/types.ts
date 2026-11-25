@@ -115,6 +115,7 @@ export interface Product {
   price: number; // rupees
   priceAsOf: string; // ISO date
   emoji: string;
+  photo?: string; // product photo URL; required to publish. Optional only so older saved data still loads.
   color: string;
   category: string;
   ageMin: number; // months
@@ -152,6 +153,7 @@ export interface Profile {
   intro: string;
   points: { title: string; body: string }[];
   play: { title: string; prompt: string }[];
+  playSource?: "product" | "type"; // "type" = general ideas for this kind of toy, labelled as such
   why: string;
   source: string; // who/what wrote it
 }
@@ -253,6 +255,8 @@ export interface Ops {
   // Result counts. Optional so browsers holding older saved data fall back to the defaults.
   limitSpecific?: number; // age + category known
   limitVague?: number; // anything less specific
+  exposureWarnPct?: number; // warn when the top 5 products take more than this share of impressions
+  minPerCell?: number; // minimum visible products per age band × category
 }
 export const DEFAULT_LIMITS = { specific: 3, vague: 6 };
 export const resultLimit = (ops: Ops, specific: boolean) =>
@@ -270,6 +274,7 @@ export interface Data {
   diffs: Diff[];
   statusLog: StatusLog[];
   events: RedirectEvent[];
+  impressions?: Record<string, number>; // productId -> times shown on a chat card. Product ids only, no slots, no text.
   scrapeRuns: ScrapeRun[];
   user: User | null;
   saved: string[];

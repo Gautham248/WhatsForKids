@@ -65,6 +65,8 @@ export function publishGate(d: Data, p: Product): GateItem[] {
   const missing = [...claims].filter((c) => !cur.some((e) => e.type === c));
   const approvedReasons = d.reasons.filter((r) => r.productId === p.id && r.approved);
   return [
+    { key: "name", label: "Name and brand set", ok: !!p.name.trim() && !!brand, detail: brand ? `${p.name || "(no name)"} · ${brand.name}` : "no brand on file" },
+    { key: "photo", label: "Photo set", ok: !!(p.photo ?? "").trim(), detail: p.photo || "no photo" },
     { key: "age", label: "Age band set", ok: p.ageMax > p.ageMin && p.ageMin >= 0, detail: `${p.ageMin}–${p.ageMax} months` },
     { key: "price", label: "Price and 'as of' date set", ok: p.price > 0 && !!p.priceAsOf, detail: `₹${p.price} as of ${p.priceAsOf}` },
     { key: "url", label: "Source URL set", ok: /^https?:\/\//.test(p.sourceUrl), detail: p.sourceUrl },

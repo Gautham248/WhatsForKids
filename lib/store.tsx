@@ -6,10 +6,11 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { Data } from "./types";
 import { makeSeed } from "./seed";
 import { Act, Chat, initialChat, runTurn } from "./chat";
+import { countImpressions } from "./rank";
 import { clearRankCache } from "./rank";
 import { slotKey } from "./parser";
 
-const KEY = "wfk-demo-v1";
+const KEY = "wfk-demo-v2";
 
 interface Ctx {
   d: Data;
@@ -93,8 +94,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const applyTurn = (out: ReturnType<typeof runTurn>) => {
     chatRef.current = out.chat;
     setChat(out.chat);
-    if (out.llmCostRs || out.history) {
+    if (out.llmCostRs || out.history || out.shownIds?.length) {
       update((x) => {
+        if (out.shownIds?.length) countImpressions(x, out.shownIds);
         if (out.llmCostRs) {
           x.ops.llmCalls++;
           x.ops.llmCostRs += out.llmCostRs;

@@ -197,6 +197,7 @@ export function initialChat(): Chat {
 
 export interface TurnOut {
   chat: Chat;
+  shownIds?: string[]; // product ids put on cards this turn, for impression counting
   llmCostRs: number;
   history?: HistoryEntry;
 }
@@ -205,7 +206,11 @@ export type TurnEvent = { kind: "text"; text: string; acts?: Act[] } | { kind: "
 
 export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): TurnOut {
   const chat: Chat = { ...prev, msgs: [...prev.msgs], shown: [...prev.shown] };
-  const say = (m: Omit<Msg, "id" | "role">) => chat.msgs.push({ id: ++chat.seq, role: "bot", ...m });
+  const shownIds: string[] = [];
+  const say = (m: Omit<Msg, "id" | "role">) => {
+    if (m.cards) shownIds.push(...m.cards);
+    chat.msgs.push({ id: ++chat.seq, role: "bot", ...m });
+  };
   const before = { ...prev.slots, interests: prev.slots.interests ? [...prev.slots.interests] : undefined };
   const notes: string[] = [];
   let llmCostRs = 0;
@@ -278,12 +283,12 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     chat.msgs.push({ id: ++chat.seq, role: "user", text: actLabel(a) });
     if (chat.pillTaps > 40) {
       say({ text: "That's a lot of taps for one chat. Start a new chat to keep going." });
-      return { chat, llmCostRs: 0 };
+      return { chat, shownIds, llmCostRs: 0 };
     }
     chat.slots = applyAct(d, chat.slots, a);
     notes.push(a.t === "multi" ? `${a.acts.length} pills applied together in one turn as coded slot updates. Nothing to parse, no model call.` : "Pill taps send coded slot updates. Nothing to parse, no model call.");
     respond({ path: "pill", why: a.t === "multi" ? "multi-select taps, bypass the parser entirely" : "coded tap, bypasses the parser entirely", intent: "search", picked: a.t === "multi" ? a.acts.map(actLabel) : undefined });
-    return { chat, llmCostRs: 0, history };
+    return { chat, shownIds, llmCostRs: 0, history };
   }
 
   // ---- typed text path
@@ -303,7 +308,7 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     });
     notes.push(`Guard: ${chat.typed}/${cap} typed turns used (guest cap ${d.ops.guestCap}, signed-in cap ${d.ops.userCap}). No parsing, no model call.`);
     finish({ path: "guard", why: "turn cap reached" });
-    return { chat, llmCostRs: 0 };
+    return { chat, shownIds, llmCostRs: 0 };
   }
   chat.typed++;
   if (picks.length) {
@@ -339,7 +344,7 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
   if (parse.intent === "out_of_range") {
     say({ text: `I only curate for children up to 14, so I can't suggest anything for ${parse.outOfRange} years. If you're buying for a younger sibling or relative, tell me their age.`, pills: agePills() });
     finish({ ...via, costRs: cost });
-    return { chat, llmCostRs };
+    return { chat, shownIds, llmCostRs };
   }
   if (parse.intent === "advice") {
     const rel = relatedSearch(text);
@@ -352,23 +357,23 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     } else
       say({ text: "That's a good question, but I only help find products, so a paediatrician or a trusted parenting site will serve you better. If you'd like, I can look for something to play with instead. How old is the child?", pills: chat.slots.age ? [{ label: "Show ideas again", act: { t: "relax", what: "category" } }] : agePills() });
     finish({ ...via, costRs: cost });
-    return { chat, llmCostRs };
+    return { chat, shownIds, llmCostRs };
   }
   if (picks.length && (parse.intent === "greeting" || parse.intent === "other")) {
     // The words added nothing, but the picked pills did: search on those.
     notes.push(`Text intent '${parse.intent}' ignored because pills were picked alongside it.`);
     respond(via, cost);
-    return { chat, llmCostRs, history };
+    return { chat, shownIds, llmCostRs, history };
   }
   if (parse.intent === "greeting") {
     say({ text: "Hello! How old is the child you're shopping for?", pills: agePills() });
     finish({ ...via, costRs: cost });
-    return { chat, llmCostRs };
+    return { chat, shownIds, llmCostRs };
   }
   if (parse.intent === "other") {
     say({ text: "I can help with toys, books and gifts for children aged 0–14. Tell me the child's age, and anything else you know: a budget, an interest, or whether it's a gift.", pills: [...agePills(), ...TRY.slice(0, 2)] });
     finish({ ...via, costRs: cost });
-    return { chat, llmCostRs };
+    return { chat, shownIds, llmCostRs };
   }
 
   const merged = mergeSlots(chat.slots, parse.slots, parse.clear, parse.reset);
@@ -394,10 +399,10 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     }
     notes.push("Certification questions are answered only from evidence_current. No record, no claim.");
     finish({ ...via, costRs: cost, result: undefined });
-    return { chat, llmCostRs };
+    return { chat, shownIds, llmCostRs };
   }
 
   chat.slots = merged;
   respond(via, cost);
-  return { chat, llmCostRs, history };
+  return { chat, shownIds, llmCostRs, history };
 }

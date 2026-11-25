@@ -153,6 +153,7 @@ export function addProductFromFixture(d: Data, o: ScrapeOutcome): Product | null
     price: o.parsed.price,
     priceAsOf: today,
     emoji: "🎁",
+    photo: o.parsed.image,
     color: "#ececf4",
     category: cat,
     ageMin,

@@ -1,5 +1,6 @@
 "use client";
-import { DEFAULT_LIMITS } from "@/lib/types";
+import { BANDS, CATEGORIES, DEFAULT_LIMITS, bandLabel } from "@/lib/types";
+import { exposure } from "@/lib/rank";
 import { useApp } from "@/lib/store";
 import { Note } from "@/components/bits";
 import { refreshBrand } from "@/lib/scraper";
@@ -16,6 +17,8 @@ const PROVIDERS = [
 export default function Ops() {
   const { d, update, reset, toast } = useApp();
   const today = todayOf(d);
+  const ex = exposure(d);
+  const pname = (id: string) => d.products.find((p) => p.id === id)?.name ?? id;
   const clock = (n: number) => update((x) => void (x.ops.clockOffsetDays = n === 0 ? 0 : x.ops.clockOffsetDays + n));
   return (
     <>
@@ -53,6 +56,44 @@ export default function Ops() {
           <thead><tr><th>Provider</th><th>Purpose</th><th>Allowed fields</th><th>Region</th><th>Retention</th><th>Deletion</th></tr></thead>
           <tbody>{PROVIDERS.map((r) => <tr key={r[0]}>{r.map((c, i) => <td key={i} className="small">{i === 0 ? <b>{c}</b> : c}</td>)}</tr>)}</tbody>
         </table>
+      </div>
+
+      <div className="card">
+        <h2>Exposure and catalogue depth</h2>
+        <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+          <label className="f" style={{ width: 200 }}>Warn when top 5 take over (%)<input type="number" min={10} max={100} value={d.ops.exposureWarnPct ?? 50} onChange={(e) => update((x) => void (x.ops.exposureWarnPct = Math.min(100, Math.max(10, Number(e.target.value)))))} /></label>
+          <label className="f" style={{ width: 200 }}>Minimum products per cell<input type="number" min={1} max={20} value={d.ops.minPerCell ?? 3} onChange={(e) => update((x) => void (x.ops.minPerCell = Math.min(20, Math.max(1, Number(e.target.value)))))} /></label>
+          <button className="btn sm" onClick={() => update((x) => void (x.impressions = {}))}>Reset impression counts</button>
+        </div>
+        {ex.total === 0 ? (
+          <p className="small muted">No impressions yet. Run a few searches in Chat.</p>
+        ) : (
+          <>
+            <p>
+              {ex.total} cards shown. The top 5 products took <b>{Math.round(ex.topShare * 100)}%</b>{" "}
+              {ex.warn ? <span className="badge warn">Too concentrated: the catalogue is thin for what parents ask</span> : <span className="badge good">Spread looks healthy</span>}
+            </p>
+            <ol className="small">{ex.top.map((t) => <li key={t.id}>{pname(t.id)}: {t.n}</li>)}</ol>
+          </>
+        )}
+        <b className="small">Live products per age band × kind of thing</b>
+        <div style={{ overflowX: "auto" }}>
+          <table className="small">
+            <thead><tr><th></th>{BANDS.map((b) => <th key={b}>{bandLabel(b).replace(" years", "")}</th>)}</tr></thead>
+            <tbody>
+              {Object.keys(CATEGORIES).map((c) => (
+                <tr key={c}>
+                  <td>{CATEGORIES[c]}</td>
+                  {BANDS.map((b) => {
+                    const cell = ex.grid.find((g) => g.band === b && g.category === c)!;
+                    return <td key={b} style={cell.low ? { background: "var(--warn-soft, #fff4d6)", fontWeight: 600 } : undefined}>{cell.n}</td>;
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Note>Repetition is usually a catalogue problem, not a code problem. Highlighted cells have fewer live products than the agreed minimum, so parents asking there will keep seeing the same few items. Impressions are product ids and counts only: no search terms, no chat text.</Note>
       </div>
 
       <div className="card">

@@ -1,7 +1,7 @@
 // Retrieval and ranking. Deterministic ordinary code: filters, score, diversity, reason pick.
 // No model is involved from here down.
 
-import { BAND_MONTHS, Data, Product, ReasonLine, ReasonTag, Slots, CATEGORIES, resultLimit } from "./types";
+import { BAND_MONTHS, BANDS, Band, Data, Product, ReasonLine, ReasonTag, Slots, CATEGORIES, resultLimit } from "./types";
 import { evidenceCurrent, overlapsBand, todayOf, visibility } from "./gate";
 import { slotKey } from "./parser";
 
@@ -141,4 +141,36 @@ export function certSearch(d: Data, slots: Slots, token: string) {
     if (ev) matches.push({ product: p, evidence: ev.claimText });
   }
   return { safety, matches };
+}
+
+/** Add one impression per product id shown on a chat card. Mutates the Data draft it is given. */
+export function countImpressions(d: Data, ids: string[]) {
+  const imp = (d.impressions ??= {});
+  for (const id of ids) imp[id] = (imp[id] ?? 0) + 1;
+}
+
+export interface Exposure {
+  total: number;
+  top: { id: string; n: number }[];
+  topShare: number; // 0..1, share of all impressions taken by the top 5
+  warn: boolean;
+  grid: { band: Band; category: string; n: number; low: boolean }[];
+}
+/** How concentrated the shown results are, and how deep the live catalogue is per age band × category. */
+export function exposure(d: Data): Exposure {
+  const imp = d.impressions ?? {};
+  const all = Object.entries(imp).map(([id, n]) => ({ id, n })).sort((a, b) => b.n - a.n || a.id.localeCompare(b.id));
+  const total = all.reduce((t, x) => t + x.n, 0);
+  const top = all.slice(0, 5);
+  const topShare = total ? top.reduce((t, x) => t + x.n, 0) / total : 0;
+  const warnAt = (d.ops.exposureWarnPct ?? 50) / 100;
+  const min = d.ops.minPerCell ?? 3;
+  const live = d.products.filter((p) => visibility(d, p).visible);
+  const grid = BANDS.flatMap((band) =>
+    Object.keys(CATEGORIES).map((category) => {
+      const n = live.filter((p) => p.category === category && overlapsBand(p, band)).length;
+      return { band, category, n, low: n < min };
+    }),
+  );
+  return { total, top, topShare, warn: total > 0 && topShare > warnAt, grid };
 }
