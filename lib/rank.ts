@@ -1,7 +1,7 @@
 // Retrieval and ranking. Deterministic ordinary code: filters, score, diversity, reason pick.
 // No model is involved from here down.
 
-import { BAND_MONTHS, Data, Product, ReasonLine, ReasonTag, Slots, CATEGORIES } from "./types";
+import { BAND_MONTHS, Data, Product, ReasonLine, ReasonTag, Slots, CATEGORIES, resultLimit } from "./types";
 import { evidenceCurrent, overlapsBand, todayOf, visibility } from "./gate";
 import { slotKey } from "./parser";
 
@@ -98,7 +98,7 @@ export function search(d: Data, slots: Slots, shown: string[] = []): SearchResul
     cache.set(key, scored);
     if (cache.size > 200) cache.delete(cache.keys().next().value as string);
   }
-  const limit = slots.age && slots.category ? 3 : 6;
+  const limit = resultLimit(d.ops, !!(slots.age && slots.category));
   // Serve-time steps (not cached, so the cache stays shareable between sessions):
   const adjusted = scored
     .map((r) => (shown.includes(r.id) ? { ...r, score: r.score - 30, parts: { ...r.parts, already_shown: -30 } } : r))
@@ -108,7 +108,8 @@ export function search(d: Data, slots: Slots, shown: string[] = []): SearchResul
   const picked: Ranked[] = [];
   for (const r of adjusted) {
     const p = d.products.find((x) => x.id === r.id)!;
-    if ((perBrand[p.brandId] ?? 0) >= 2 || (perCat[p.category] ?? 0) >= 2) continue;
+    // Max 2 per brand and 2 per category. The category cap is skipped when the parent asked for one category.
+    if ((perBrand[p.brandId] ?? 0) >= 2 || (!slots.category && (perCat[p.category] ?? 0) >= 2)) continue;
     perBrand[p.brandId] = (perBrand[p.brandId] ?? 0) + 1;
     perCat[p.category] = (perCat[p.category] ?? 0) + 1;
     const { line, why } = pickReason(d, p, slots);

@@ -31,7 +31,13 @@ const last = chat.msgs[chat.msgs.length - 1];
 console.log("   cards:", last.cards?.map((c) => d.products.find((p) => p.id === c)!.name), "| reasons:", Object.values(last.cardInfo ?? {}).map((x) => x.tag));
 ok((last.cards?.length ?? 0) > 0, "results shown");
 run("books under 300 for a 3 year old");
-ok(/Nothing matches/.test(chat.msgs[chat.msgs.length - 1].text), "no-match message: " + chat.msgs[chat.msgs.length - 1].text);
+{
+  const t = chat.msgs[chat.msgs.length - 1];
+  const stepped = /Nothing under ₹500 .*Here are options up to ₹1,000/.test(t.text) && (t.cards?.length ?? 0) > 0;
+  const relaxed = /Nothing matches/.test(t.text) && !t.cards;
+  ok(stepped || relaxed, "no-match: steps budget up one cap, else offers relax: " + t.text);
+  if (stepped) ok(chat.slots.budget === 1000, "no-match step updates budget slot to the cap shown");
+}
 chat = initialChat();
 run("ISI certified wooden toys for a 2 year old");
 ok((chat.msgs[chat.msgs.length - 1].cards?.length ?? 0) > 0, "ISI query returns products with evidence: " + chat.msgs[chat.msgs.length - 1].text.slice(0, 100));
@@ -103,6 +109,48 @@ console.log("search age 6-8:", search(d, { age: "6-8" }).ranked.map((r) => d.pro
   const c4 = runTurn(d, initialChat(), { kind: "text", text: "gift for my niece" }).chat;
   const m4 = c4.msgs[c4.msgs.length - 1];
   ok(/How old/.test(m4.text) && !!m4.groups?.find((g) => g.key === "age") && !!m4.groups?.find((g) => g.key === "budget"), "age missing: asks age, offers age + other groups together");
+}
+
+// phase 1: occasion group, adjustable limits, stepwise no-match, related search
+{
+  const last = (c: ReturnType<typeof initialChat>) => c.msgs[c.msgs.length - 1];
+  let c = runTurn(d, initialChat(), { kind: "text", text: "gift for my nephew, 6 years" }).chat;
+  ok(!!last(c).groups?.find((g) => g.key === "occasion"), "occasion group shown for a gift with no occasion");
+  c = runTurn(d, c, { kind: "act", act: { t: "occasion", o: "birthday" } }).chat;
+  ok(c.slots.occasion === "birthday" && c.slots.recipient === "gift" && !last(c).groups?.find((g) => g.key === "occasion"), "occasion set: group gone, implies gift");
+  const own = runTurn(d, initialChat(), { kind: "text", text: "for my son, 6 years" }).chat;
+  ok(!last(own).groups?.find((g) => g.key === "occasion"), "no occasion group when buying for own child");
+  const all = runTurn(d, initialChat(), { kind: "text", text: "something for a 6 year old" }).chat;
+  ok(["budget", "interests", "recipient", "gender"].every((k) => !!last(all).groups?.find((g) => g.key === k)), "still asks every missing detail at once");
+
+  const boy = search(d, { age: "3-5", gender: "boy" }).ranked.map((r) => r.id).join();
+  ok(boy === search(d, { age: "3-5" }).ranked.map((r) => r.id).join(), "gender never changes results");
+
+  const saved = { ...d.ops };
+  d.ops.limitSpecific = 2; d.ops.limitVague = 4; d.ops.catalogueVersion++;
+  ok(search(d, { age: "3-5", category: "building" }).ranked.length <= 2, "limitSpecific respected");
+  ok(search(d, { age: "3-5" }).ranked.length <= 4, "limitVague respected");
+  d.ops.limitVague = 0;
+  ok(search(d, { age: "3-5" }).ranked.length >= 1, "limit 0 clamped to 1");
+  d.ops.limitSpecific = undefined; d.ops.limitVague = undefined;
+  ok(search(d, { age: "3-5" }).ranked.length <= 6, "missing limits fall back to defaults (old saved data)");
+  Object.assign(d.ops, saved); d.ops.catalogueVersion++;
+  const cat = search(d, { age: "6-8", category: "building" });
+  console.log("   age+category results:", cat.ranked.length, "of", cat.total);
+  ok(cat.ranked.length === Math.min(3, cat.total), "specific request can fill all 3 slots from one category");
+
+  const st = runTurn(d, initialChat(), { kind: "text", text: "music toys for a 4 year old under 500" }).chat;
+  ok(/^Nothing under ₹500 for .*Here are options up to ₹1,000\./.test(last(st).text) && (last(st).cards?.length ?? 0) > 0 && st.slots.budget === 1000, "no-match steps budget up one cap: " + last(st).text.slice(0, 90));
+  const none = runTurn(d, initialChat(), { kind: "text", text: "music toys for a 13 year old under 5000" }).chat;
+  ok(!/Here are options up to/.test(last(none).text), "no budget step above ₹5,000: " + last(none).text.slice(0, 80));
+
+  const adv = runTurn(d, initialChat(), { kind: "text", text: "my toddler has tantrums at bedtime" }).chat;
+  const ap = last(adv).pills ?? [];
+  ok(/only help find products/.test(last(adv).text) && ap.length === 1 && /Bedtime books for 0–2/.test(ap[0].label), "advice: refusal + one related search: " + ap.map((p) => p.label).join("|"));
+  const tap = runTurn(d, adv, { kind: "act", act: ap[0].act }).chat;
+  ok(tap.slots.category === "books" && tap.slots.age === "0-2", "related-search pill runs that search");
+  const vacc = runTurn(d, initialChat(), { kind: "text", text: "do babies need vaccines" }).chat;
+  ok(!(last(vacc).pills ?? []).some((p) => / for |books|play/i.test(p.label)), "unmapped advice topic: no related-search pill");
 }
 console.log(fails ? `${fails} FAILED` : "ALL OK");
 process.exit(fails ? 1 : 0);

@@ -1,4 +1,5 @@
 "use client";
+import { DEFAULT_LIMITS } from "@/lib/types";
 import { useApp } from "@/lib/store";
 import { Note } from "@/components/bits";
 import { refreshBrand } from "@/lib/scraper";
@@ -37,6 +38,8 @@ export default function Ops() {
           <div className="row">
             <label className="f" style={{ width: 150 }}>Guest turn cap<input type="number" min={1} value={d.ops.guestCap} onChange={(e) => update((x) => void (x.ops.guestCap = Math.max(1, Number(e.target.value))))} /></label>
             <label className="f" style={{ width: 150 }}>Signed-in turn cap<input type="number" min={1} value={d.ops.userCap} onChange={(e) => update((x) => void (x.ops.userCap = Math.max(1, Number(e.target.value))))} /></label>
+            <label className="f" style={{ width: 170 }} title="Results when age and category are both known">Results, specific request<input type="number" min={1} max={12} value={d.ops.limitSpecific ?? DEFAULT_LIMITS.specific} onChange={(e) => update((x) => void (x.ops.limitSpecific = Math.min(12, Math.max(1, Number(e.target.value)))))} /></label>
+            <label className="f" style={{ width: 170 }} title="Results for anything less specific">Results, vague request<input type="number" min={1} max={12} value={d.ops.limitVague ?? DEFAULT_LIMITS.vague} onChange={(e) => update((x) => void (x.ops.limitVague = Math.min(12, Math.max(1, Number(e.target.value)))))} /></label>
           </div>
           <p className="small">Model calls so far in this browser: <b>{d.ops.llmCalls}</b>, simulated cost <b>₹{d.ops.llmCostRs.toFixed(4)}</b>.</p>
           <Note>Real build: hard monthly cap at the provider (client sets the budget, B6), plus an app-level daily counter in <code>llm_usage</code>, plus per-IP and per-device daily caps. The 5-turn guest cap is a proposal.</Note>

@@ -287,6 +287,6 @@ export function makeSeed(now: Date): Data {
     child: null,
     consents: [],
     deletionRequests: [],
-    ops: { llmDisabled: false, clockOffsetDays: 0, breakAdapter: false, guestCap: 5, userCap: 10, catalogueVersion: 1, llmCalls: 0, llmCostRs: 0, annotate: false, inspector: false },
+    ops: { llmDisabled: false, clockOffsetDays: 0, breakAdapter: false, guestCap: 5, userCap: 10, catalogueVersion: 1, llmCalls: 0, llmCostRs: 0, annotate: false, inspector: false, limitSpecific: 3, limitVague: 6 },
   };
 }

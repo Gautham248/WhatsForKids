@@ -295,6 +295,20 @@ export function describeSlots(s: Slots): string {
   return parts.join(" · ");
 }
 
+/** Advice questions we can't answer, mapped to a safe related search. Fixed list, never model-written. */
+const RELATED: { re: RegExp; cat: string; label: string }[] = [
+  { re: /\b(sleep\w*|bedtime|night ?time|wont sleep)\b/, cat: "books", label: "Bedtime books" },
+  { re: /\b(screen ?time|tv|phone|tablet|ipad)\b/, cat: "outdoor", label: "Outdoor play" },
+  { re: /\b(tantrum\w*|meltdown\w*|anxious|calm\w*)\b/, cat: "sensory", label: "Calming sensory toys" },
+  { re: /\b(homework|study|focus|concentrat\w*)\b/, cat: "puzzles", label: "Puzzles and games" },
+  { re: /\b(potty|toilet)\b/, cat: "books", label: "Picture books about potty training" },
+];
+export function relatedSearch(text: string): { cat: string; label: string } | null {
+  const t = norm(text);
+  const hit = RELATED.find((r) => r.re.test(t));
+  return hit ? { cat: hit.cat, label: hit.label } : null;
+}
+
 export type SlotGap = "age" | "budget" | "interests" | "recipient" | "gender";
 const GAP_TEXT: Record<SlotGap, string> = {
   age: "the child's age",

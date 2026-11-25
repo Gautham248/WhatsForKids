@@ -1,8 +1,8 @@
 // The parent-lane turn logic as one pure function, so it is easy to read and test.
 // Raw text lives only in this in-memory chat object. Only coded slots are ever persisted.
 
-import { Band, BudgetCap, BUDGETS, CATEGORIES, Data, Gender, HistoryEntry, INTERESTS, Recipient, Slots, bandLabel, budgetLabel, BANDS } from "./types";
-import { askFor, describeSlots, llmParse, mergeSlots, missingSlots, needsLlm, rulesParse, Parse } from "./parser";
+import { Band, BudgetCap, BUDGETS, CATEGORIES, Data, Gender, HistoryEntry, INTERESTS, Occasion, Recipient, Slots, bandLabel, budgetLabel, BANDS } from "./types";
+import { askFor, describeSlots, llmParse, mergeSlots, missingSlots, needsLlm, relatedSearch, rulesParse, Parse } from "./parser";
 import { certSearch, search, SearchResult } from "./rank";
 
 export type Act =
@@ -12,6 +12,7 @@ export type Act =
   | { t: "interest"; i: string }
   | { t: "recipient"; r: Recipient }
   | { t: "gender"; g: Gender }
+  | { t: "occasion"; o: Occasion }
   | { t: "multi"; acts: Act[] }
   | { t: "relax"; what: "budget" | "category" }
   | { t: "profile" }
@@ -82,6 +83,8 @@ export const TRY: Pill[] = [
   { label: "books under 300 for a 3 year old", act: { t: "text", text: "books under 300 for a 3 year old" }, kind: "try" },
   { label: "my toddler has tantrums at bedtime", act: { t: "text", text: "my toddler has tantrums at bedtime" }, kind: "try" },
 ];
+const OCCASION_LABEL: Record<Occasion, string> = { birthday: "Birthday", festival: "Festival", return_gift: "Return gift" };
+
 export function actLabel(a: Act): string {
   switch (a.t) {
     case "age": return bandLabel(a.band).replace(" years", "");
@@ -90,6 +93,7 @@ export function actLabel(a: Act): string {
     case "interest": return `Loves ${INTERESTS[a.i].toLowerCase()}`;
     case "recipient": return a.r === "gift" ? "It's a gift" : "For my child";
     case "gender": return a.g === "boy" ? "Boy" : "Girl";
+    case "occasion": return OCCASION_LABEL[a.o];
     case "relax": return `Any ${a.what === "budget" ? "budget" : "category"}`;
     case "profile": return "Use my child's profile";
     case "load": return "Re-run a saved search";
@@ -109,6 +113,7 @@ function applyAct(d: Data, s: Slots, a: Act): Slots {
     case "interest": return mergeSlots(s, { interests: [a.i] });
     case "recipient": return mergeSlots(s, { recipient: a.r });
     case "gender": return mergeSlots(s, { gender: a.g });
+    case "occasion": return mergeSlots(s, { occasion: a.o, recipient: "gift" }); // an occasion implies a gift
     case "relax": return mergeSlots(s, {}, [a.what === "budget" ? "budget" : "category"]);
     case "load": return { ...a.slots };
     case "profile": return d.child ? mergeSlots(s, { age: d.child.ageBand, interests: d.child.interests.slice(0, 2), recipient: "own" }) : s;
@@ -128,6 +133,7 @@ const ageGroup = (): PillGroup => ({ key: "age", label: "Age", mode: "one", pill
 const budgetGroup = (): PillGroup => ({ key: "budget", label: "Budget", mode: "one", pills: BUDGETS.map((c) => ({ label: budgetLabel(c), act: { t: "budget", cap: c } as Act })) });
 const recipientGroup = (): PillGroup => ({ key: "recipient", label: "Who it's for", mode: "one", pills: [{ label: "It's a gift", act: { t: "recipient", r: "gift" } }, { label: "For my child", act: { t: "recipient", r: "own" } }] });
 const genderGroup = (): PillGroup => ({ key: "gender", label: "Boy or girl", mode: "one", pills: [{ label: "Boy", act: { t: "gender", g: "boy" } }, { label: "Girl", act: { t: "gender", g: "girl" } }] });
+const occasionGroup = (): PillGroup => ({ key: "occasion", label: "Occasion", mode: "one", pills: (Object.keys(OCCASION_LABEL) as Occasion[]).map((o) => ({ label: OCCASION_LABEL[o], act: { t: "occasion", o } as Act })) });
 const interestGroup = (ids: string[]): PillGroup => ({ key: "interests", label: "They like", mode: "many", max: 2, pills: ids.map((i) => ({ label: INTERESTS[i], act: { t: "interest", i } as Act })) });
 const categoryGroup = (ids: string[]): PillGroup => ({ key: "category", label: "Kind of thing", mode: "one", pills: ids.map((c) => ({ label: CATEGORIES[c], act: { t: "cat", cat: c } as Act })) });
 
@@ -153,6 +159,8 @@ function followUpGroups(d: Data, s: Slots, resultIds?: string[]): PillGroup[] {
     if (cats.length) g.push(categoryGroup(cats));
   }
   if (!s.recipient) g.push(recipientGroup());
+  // Shown alongside "Who it's for" so a gift and its occasion can be picked in the same round.
+  if (s.recipient !== "own" && !s.occasion) g.push(occasionGroup());
   if (!s.gender) g.push(genderGroup());
   return g;
 }
@@ -219,7 +227,19 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
       say({ text: `${describeSlots(s) ? `Got it: ${describeSlots(s)}. ` : ""}How old is the child?${tail} Type it, or pick below.`, groups: followUpGroups(d, s), pills: profile, hint: hintFor(s) });
       return finish({ ...via, costRs });
     }
-    const res = search(d, s, chat.shown);
+    let res = search(d, s, chat.shown);
+    let stepped = "";
+    if (!res.ranked.length && s.budget && s.budget < 5000) {
+      // Relax one thing at a time: try the next budget cap up before offering anything else.
+      const next = BUDGETS[BUDGETS.indexOf(s.budget) + 1];
+      const wider = search(d, { ...s, budget: next }, chat.shown);
+      if (wider.ranked.length) {
+        stepped = `Nothing ${budgetLabel(s.budget).replace("Up to", "under")} for ${describeSlots({ ...s, budget: undefined }) || "this search"}. Here are options ${budgetLabel(next).toLowerCase()}.`;
+        notes.push(`No match at ${budgetLabel(s.budget)}; stepped the budget up one cap to ${budgetLabel(next)}.`);
+        chat.slots = { ...s, budget: next };
+        res = wider;
+      }
+    }
     if (!res.ranked.length) {
       say({
         text: `Nothing matches ${describeSlots(s)} right now. ${res.relax.length ? "I can relax one filter:" : "Try a different age, or start over."}`,
@@ -230,18 +250,18 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     const info: Record<string, CardInfo> = {};
     res.ranked.forEach((r) => (info[r.id] = { reason: r.reason?.text, tag: r.reason?.tag }));
     const n = res.ranked.length;
-    const gaps = missingSlots(s);
+    const gaps = missingSlots(chat.slots);
     const follow = gaps.length ? ` To narrow it down, tell me ${askFor(gaps)}. Type it, or pick as many as you like below.` : " Tap a card for details, or refine below.";
     say({
-      text: `${n === 1 ? "Here is 1 idea" : `Here are ${n} ideas`} for ${describeSlots(s)}.${res.total <= n ? " That is everything that matches right now." : ""}${follow}`,
+      text: `${stepped ? stepped + " " : ""}${n === 1 ? "Here is 1 idea" : `Here are ${n} ideas`} for ${describeSlots(chat.slots)}.${res.total <= n ? " That is everything that matches right now." : ""}${follow}`,
       cards: res.ranked.map((r) => r.id),
       cardInfo: info,
-      groups: followUpGroups(d, s, res.ranked.map((r) => r.id)),
+      groups: followUpGroups(d, chat.slots, res.ranked.map((r) => r.id)),
       pills: [{ label: "Start over", act: { t: "reset" } }],
-      hint: hintFor(s),
+      hint: hintFor(chat.slots),
     });
     res.ranked.forEach((r) => chat.shown.push(r.id));
-    if (d.user) history = { id: `h-${now.getTime()}`, at: now.toISOString(), slots: s, productIds: res.ranked.map((r) => r.id) };
+    if (d.user) history = { id: `h-${now.getTime()}`, at: now.toISOString(), slots: chat.slots, productIds: res.ranked.map((r) => r.id) };
     finish({ ...via, result: res, costRs });
   };
 
@@ -322,7 +342,15 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     return { chat, llmCostRs };
   }
   if (parse.intent === "advice") {
-    say({ text: "That's a good question, but I only help find products, so a paediatrician or a trusted parenting site will serve you better. If you'd like, I can look for something to play with instead. How old is the child?", pills: chat.slots.age ? [{ label: "Show ideas again", act: { t: "relax", what: "category" } }] : agePills() });
+    const rel = relatedSearch(text);
+    const age = parse.slots.age ?? chat.slots.age;
+    if (rel) {
+      const label = `${rel.label}${age ? ` for ${bandLabel(age).replace(" years", "")}` : ""}`;
+      const acts: Act[] = [...(age && !chat.slots.age ? [{ t: "age", band: age } as Act] : []), { t: "cat", cat: rel.cat }];
+      notes.push(`Advice topic mapped to a related search (${CATEGORIES[rel.cat]}). No advice given.`);
+      say({ text: "That's a good question, but I only help find products, so a paediatrician or a trusted parenting site will serve you better. I can show something related instead:", pills: [{ label, act: acts.length === 1 ? acts[0] : { t: "multi", acts } }] });
+    } else
+      say({ text: "That's a good question, but I only help find products, so a paediatrician or a trusted parenting site will serve you better. If you'd like, I can look for something to play with instead. How old is the child?", pills: chat.slots.age ? [{ label: "Show ideas again", act: { t: "relax", what: "category" } }] : agePills() });
     finish({ ...via, costRs: cost });
     return { chat, llmCostRs };
   }

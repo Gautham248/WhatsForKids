@@ -250,7 +250,13 @@ export interface Ops {
   llmCostRs: number;
   annotate: boolean;
   inspector: boolean;
+  // Result counts. Optional so browsers holding older saved data fall back to the defaults.
+  limitSpecific?: number; // age + category known
+  limitVague?: number; // anything less specific
 }
+export const DEFAULT_LIMITS = { specific: 3, vague: 6 };
+export const resultLimit = (ops: Ops, specific: boolean) =>
+  Math.max(1, Math.round((specific ? ops.limitSpecific ?? DEFAULT_LIMITS.specific : ops.limitVague ?? DEFAULT_LIMITS.vague) || 1));
 
 export interface Data {
   v: number;
