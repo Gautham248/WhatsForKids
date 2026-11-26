@@ -33,7 +33,7 @@ const TESTS: { id: string; what: string; how: string; href: string }[] = [
   { id: "Cost", what: "Guest limits", how: "5 typed messages per guest chat, and 15 per device per day across chats (New chat does not reset it). Then the guest is asked to sign in; pills keep working. Both caps are in Admin → Ops.", href: "/admin/ops" },
   { id: "Money", what: "Is it working?", how: "Admin → Events shows the three numbers: share of chats that end in a brand click, clicks per chat, and sales reported by brands (import a sample in Admin → CSV → Brand sales report).", href: "/admin/events" },
   { id: "Money", what: "Sponsored slot", how: "Search for a 9 year old: the gear set shows at position 2, labelled Sponsored. Magnetic tiles pays too but is not published, so it never appears. Payment buys position, never entry: the product must pass the gate and match the search. Switch it off in Admin → Ops.", href: "/" },
-  { id: "Cost", what: "Cheap by design", how: "Compare a tapped turn (free), a typed turn the rules parse (free) and “five yr old likes dinasaurs” (a simulated model call, ~₹0.01). Flip the model kill-switch in Ops.", href: "/admin/ops" },
+  { id: "Cost", what: "Cheap by design", how: "Compare a tapped turn (free), a typed turn the rules parse (free) and “something for a kid who is 4” (the rules find nothing, so a simulated model call, ~₹0.01). Flip the model kill-switch in Ops.", href: "/admin/ops" },
 ];
 
 export default function HowItWorks() {

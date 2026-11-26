@@ -158,6 +158,23 @@ Each phase is one commit on `feature/thoughts-questions`, made only after the ow
   - "puzzles" is flagged as a possible typo of "puzzle", which triggers a needless model call.
   - "pretend you are a pirate" matches the pretend-play category (injection bucket). This one is probably left to the model.
 
+### After Phase B (rules only; 2026-11-26)
+- **Overall:**
+  - Slot accuracy is **95.9%** (914/953).
+  - Cases passed: **81.3%** (174/214).
+  - Would call the model: **11.7%** (25/214).
+- **Buckets:**
+  - These pass 100%: number formats, age formats, typos, Hinglish, clean, vague and advice.
+  - Injection passes 9/10. Long messages pass 5/10.
+  - Negation (0/19), several children (4/13) and corrections (8/14) are Phase C.
+- **Floor:** `FLOOR` is raised to 0.959 / 174.
+- **Typo guard added beyond the plan:** a fuzzy match must share the first letter, and `NOT_TYPOS` in `lexicon.ts` lists ordinary words that are never "fixed". Without the guard, "instructions" became "construction" and "print" became "paint".
+- **Bare amounts:** a plain 3–6 digit number that isn't an age or a year is now read as a budget ("1.2k for a 3yo", "change budget to 2000").
+- **Still open:**
+  - "my sister's son" isn't read as a gift.
+  - "she is 4" or "son is 10" with no "years" sets no age.
+  - "drawing and painting" sets the category but not the art interest.
+
 ### Decisions still open
 - ~~Confirm that grade-to-age is grade + 5.~~ Confirmed by the owner on 2026-11-26: class, grade or std N means age N + 5.
 - Decide whether exclusions should later filter results (needs ranking work; out of scope now).

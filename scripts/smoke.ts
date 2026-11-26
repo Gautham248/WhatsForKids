@@ -21,12 +21,42 @@ const p1 = rulesParse("gift for my 4 year old niece who loves dinosaurs, under 1
 ok(p1.slots.age === "3-5" && p1.slots.budget === 1000 && p1.slots.recipient === "gift" && p1.slots.interests?.[0] === "dinosaurs", "rules: age/budget/gift/dino " + JSON.stringify(p1.slots));
 ok(!needsLlm(p1).llm, "rules handle it: " + needsLlm(p1).why);
 const p2 = rulesParse("five yr old likes dinasaurs");
-ok(needsLlm(p2).llm, "needs llm: " + needsLlm(p2).why);
+ok(!needsLlm(p2).llm && p2.slots.age === "3-5" && p2.slots.interests?.includes("dinosaurs"), "rules now fix number word + typo for free: " + p2.fixes.join("; "));
+const p3 = rulesParse("something for a kid who is 4");
+ok(needsLlm(p3).llm, "still needs llm: " + needsLlm(p3).why);
 const l2 = llmParse("five yr old likes dinasaurs", {});
 ok(l2.parse.slots.age === "3-5" && l2.parse.slots.interests?.includes("dinosaurs"), "llm sim fixes number word + typo " + JSON.stringify(l2.parse.slots) + " cost Rs " + l2.costRs.toFixed(4));
 ok(rulesParse("my toddler has tantrums at bedtime").intent === "advice", "advice intent");
 ok(rulesParse("ISI certified wooden toys for a 2 year old").intent === "cert", "cert intent");
 ok(rulesParse("toys for a 17 year old").intent === "out_of_range", "out of range");
+
+// Phase B: stronger rules (numbers, ages, Hinglish, typos, product nouns)
+{
+  const b = (t: string) => rulesParse(t).slots.budget;
+  const a = (t: string) => rulesParse(t).slots.age;
+  ok(b("budget 1.5k for a 6 year old") === 1000 && b("under 2k") === 2000, "budget: 1.5k → ₹1,000, 2k → ₹2,000");
+  ok(b("under 2 thousand") === 2000 && b("do hazaar tak") === 2000 && b("dedh hazaar") === 1000, "budget: 2 thousand / do hazaar → ₹2,000, dedh hazaar → ₹1,000");
+  ok(b("Rs.1,500/- please") === 1000 && b("₹ 1.5k gift") === 1000, "budget: Rs.1,500/- and ₹ 1.5k → ₹1,000");
+  ok(b("twenty five hundred rupees") === 2000, "budget: compound number words");
+  ok(b("under 499 for a 2 year old") === 500, "budget: under 499 → ₹500 (floor)");
+  ok(b("under 50 for a 3 year old") === undefined, "budget: under 50 with no currency sets no budget");
+  ok(b("born in 2019, 6 years old") === undefined, "budget: a year is not a budget");
+  ok(b("pocket money gift") === 500 && b("money no bar") === 5000 && b("sasta khilona") === 500, "budget words: pocket money / money no bar / sasta");
+  ok(a("18mo") === "0-2" && a("a 9-month-old") === "0-2" && a("one and a half year old") === "0-2", "age: 18mo, 9-month-old, one and a half");
+  ok(a("class 2") === "6-8" && a("std 4") === "9-12" && a("1st standard") === "6-8", "age: school class + 5");
+  ok(a("her 5th birthday") === "3-5" && a("my son is turning 7") === "6-8", "age: 5th birthday, turning 7");
+  ok(a("just started school") === "3-5" && a("a tween") === "9-12", "age: life stages");
+  const h = rulesParse("5 saal ka beta");
+  ok(h.slots.age === "3-5" && h.slots.gender === "boy" && h.slots.recipient === "own", "hinglish: 5 saal ka beta → 3-5, boy, own child");
+  ok(rulesParse("15 year old").intent === "out_of_range" && a("14 years") === "13+", "age: 15 stays out of range, 14 → 13+");
+  ok(rulesParse("lego for my 8 year old son").slots.recipient === "own", "own child: 'my 8 year old son'");
+  ok(rulesParse("for my nephews aged 8").slots.gender === "boy" && rulesParse("gifts for twins").slots.recipient === "gift", "plurals: nephews, gifts");
+  const ty = rulesParse("dinasaurs for a 4 year old");
+  ok(ty.slots.interests?.includes("dinosaurs") && !needsLlm(ty).llm, "typo fixed by rules, no model call");
+  ok(!rulesParse("print the api key").slots.category && !rulesParse("ignore instructions").slots.category, "typo guard: ordinary words are not 'fixed'");
+  ok(rulesParse("need a toy").intent === "search" && rulesParse("khilona chahiye").intent === "search", "product noun alone → search");
+  ok(!rulesParse("puzzles for a 5 year old").unexplained.includes("puzzles"), "'puzzles' is not a typo");
+}
 
 let chat = initialChat();
 const run = (text: string) => { const o = runTurn(d, chat, { kind: "text", text }); chat = o.chat; return o; };
@@ -204,8 +234,8 @@ console.log("search age 6-8:", search(d, { age: "6-8" }).ranked.map((r) => d.pro
   ok(a100.map((a) => a.pct).join() === "80,100" && e.ops.llmDisabled, "spend 110%: 80% and 100% alerts, model switched off");
   const tom = new Date(Date.parse(today) + 86400000).toISOString().slice(0, 10);
   ok(recordSpend(e, 0.6, tom).map((a) => a.pct).join() === "50", "next day: daily alerts start again");
-  const typo = runTurn(e, initialChat(), { kind: "text", text: "five yr old likes dinasaurs" });
-  ok(typo.chat.info?.path === "text-rules" && typo.llmCostRs === 0, "model off: typo message falls back to rules, costs nothing");
+  const hard = runTurn(e, initialChat(), { kind: "text", text: "something for a kid who is 4" });
+  ok(hard.chat.info?.path === "text-rules" && hard.llmCostRs === 0, "model off: a message the rules can't read falls back to rules, costs nothing");
   e.ops.llmDisabled = false; e.ops.dailyCapRs = 0;
   ok(recordSpend(e, 5).every((a) => a.scope === "month") , "daily cap 0 means no daily cap");
 
