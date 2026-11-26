@@ -3,16 +3,33 @@
 // visitor to the Vercel URL has their own private copy. Use Admin > Ops > Reset to start over.
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Data } from "./types";
-import { makeSeed } from "./seed";
-import { Act, Chat, initialChat, runTurn } from "./chat";
+import { Data, Slots } from "./types";
+import { DATA_VERSION, makeSeed } from "./seed";
+import { Act, Chat, ModelEvent, initialChat, planTextTurn, runTurn } from "./chat";
 import { countImpressions } from "./rank";
 import { DEFAULT_CAPS, recordSpend } from "./admin";
 import { todayOf } from "./gate";
 import { clearRankCache } from "./rank";
 import { slotKey } from "./parser";
 
-const KEY = "wfk-demo-v4";
+const KEY = "wfk-demo-v5";
+const MODEL_WAIT_MS = 2500; // the server gives the model 2 s; this leaves room for the network
+
+/** Ask the server route to read one message with the real model. Only the message and current slots are sent. */
+async function callParseRoute(message: string, slots: Slots): Promise<ModelEvent> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), MODEL_WAIT_MS);
+  try {
+    const r = await fetch("/api/parse", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, slots }), signal: ctl.signal });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || j.failed || !j.result) return { failed: j?.failed ?? `HTTP ${r.status}` };
+    return { raw: j.result, tokensIn: Number(j.usage?.input_tokens) || 0, tokensOut: Number(j.usage?.output_tokens) || 0 };
+  } catch {
+    return { failed: ctl.signal.aborted ? "timeout" : "network error" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 interface Ctx {
   d: Data;
@@ -20,6 +37,8 @@ interface Ctx {
   reset: () => void;
   chat: Chat;
   send: (text: string, acts?: Act[]) => void;
+  /** True while a real model call is in flight; the chat blocks another send. */
+  thinking: boolean;
   act: (a: Act) => void;
   newChat: () => void;
   sessionId: string;
@@ -44,7 +63,7 @@ function load(): Data {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const j = JSON.parse(raw) as Data;
-      if (j.v === 1) return j;
+      if (j.v === DATA_VERSION) return j;
     }
   } catch {}
   return makeSeed(new Date());
@@ -141,14 +160,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (worst) toast(worst.pct === 100 ? `Model ${worst.scope === "day" ? "daily cap" : "monthly budget"} reached: switched to rules only` : `Model spend at ${worst.pct}% of the ${worst.scope === "day" ? "daily cap" : "monthly budget"}`);
     }
   };
+  const [thinking, setThinking] = useState(false);
+  const busy = useRef(false);
   const send = useCallback((text: string, acts?: Act[]) => {
+    if (busy.current) return; // one message at a time while the model is reading the last one
     const d0 = dRef.current!;
     const day = todayOf(d0);
     const deviceCapped = !d0.user && guestUsed(day) >= (d0.ops.guestDailyCap ?? DEFAULT_CAPS.guestDaily);
-    const before = chatRef.current.typed;
-    const out = runTurn(d0, chatRef.current, { kind: "text", text, acts, deviceCapped });
-    if (!d0.user && out.chat.typed > before) bumpGuest(day);
-    applyTurn(out);
+    const run = (model?: ModelEvent) => {
+      const before = chatRef.current.typed;
+      const out = runTurn(dRef.current!, chatRef.current, { kind: "text", text, acts, deviceCapped, model });
+      if (!d0.user && out.chat.typed > before) bumpGuest(day);
+      applyTurn(out);
+    };
+    const plan = planTextTurn(d0, chatRef.current, text, deviceCapped);
+    if (!plan.callModel) return run();
+    busy.current = true;
+    setThinking(true);
+    callParseRoute(plan.text, chatRef.current.slots).then((model) => {
+      busy.current = false;
+      setThinking(false);
+      run(model);
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const act = useCallback((a: Act) => {
     if (a.t === "login") return setLoginOpen(true);
@@ -198,7 +231,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   if (!d) return <div className="loading">Loading demo…</div>;
   return (
-    <C.Provider value={{ d, update, reset, chat, send, act, newChat, sessionId, chatId, loginOpen, setLoginOpen, signIn, signOut, toast, toastMsg, requireLogin }}>
+    <C.Provider value={{ d, update, reset, chat, send, thinking, act, newChat, sessionId, chatId, loginOpen, setLoginOpen, signIn, signOut, toast, toastMsg, requireLogin }}>
       {children}
     </C.Provider>
   );

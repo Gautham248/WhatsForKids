@@ -17,7 +17,7 @@ export default function Inspector() {
           <div className="kv">
             <span className="k">Path</span>
             <span>
-              <span className={"path " + i.path}>{i.path === "pill" ? "PILL (no parse)" : i.path === "text-rules" ? "RULES (free)" : i.path === "text-llm" ? "MODEL (simulated)" : "GUARD"}</span>
+              <span className={"path " + i.path}>{i.path === "pill" ? "PILL (no parse)" : i.path === "text-rules" ? "RULES (free)" : i.path === "text-llm" ? (i.llm?.mode === "real" ? "MODEL (Claude Haiku)" : "MODEL (simulated)") : "GUARD"}</span>
             </span>
             <span className="k">Why</span>
             <span>{i.why}</span>
@@ -98,7 +98,7 @@ export default function Inspector() {
             <div className="kv">
               <span className="k">Model call</span>
               <span>
-                {i.llm.tin} tokens in, {i.llm.tout} out, <b>₹{i.llm.costRs.toFixed(4)}</b> (Haiku-class list price)
+                {i.llm.tin} tokens in, {i.llm.tout} out, <b>₹{i.llm.costRs.toFixed(4)}</b> {i.llm.mode === "real" ? "(real tokens, Haiku 5.5 list price)" : "(simulated, Haiku-class list price)"}
               </span>
               <span className="k">Changes</span>
               <span>{i.llm.notes.length ? i.llm.notes.join("; ") : "none"}</span>

@@ -7,13 +7,14 @@ import { Act, Pill, PillGroup, profilePills } from "@/lib/chat";
 import { bandLabel } from "@/lib/types";
 
 export default function ChatPage() {
-  const { d, chat, send, act, newChat } = useApp();
+  const { d, chat, send, thinking, act, newChat } = useApp();
   const [text, setText] = useState("");
+  const [sentText, setSentText] = useState(""); // shown while the real model reads it
   const end = useRef<HTMLDivElement>(null);
   const cap = d.user ? d.ops.userCap : d.ops.guestCap;
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [chat.msgs.length]);
+  }, [chat.msgs.length, thinking]);
   const last = chat.msgs[chat.msgs.length - 1];
   // Multi-select state for the latest message's pill groups: group key -> picked pill indexes.
   // Picks are tied to the message they were made on, so a new message never reads stale indexes.
@@ -36,7 +37,9 @@ export default function ChatPage() {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (thinking) return;
     if (!text.trim()) return apply();
+    setSentText(text.trim());
     send(text, picked.length ? picked : undefined);
     setText("");
   };
@@ -131,11 +134,19 @@ export default function ChatPage() {
                 {renderPills(m.pills, m === last)}
               </div>
             ))}
+            {thinking && (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                  <div className="bubble user">{sentText}</div>
+                </div>
+                <div className="bubble bot muted" aria-live="polite">Thinking…</div>
+              </>
+            )}
             <div ref={end} />
           </div>
           <form className="composer" onSubmit={submit}>
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder={last?.hint ?? "e.g. a birthday gift for my 6 year old who likes space, under 1500"} maxLength={400} aria-label="Message" />
-            <button className="btn primary" type="submit">
+            <input value={text} onChange={(e) => setText(e.target.value)} placeholder={last?.hint ?? "e.g. a birthday gift for my 6 year old who likes space, under 1500"} maxLength={400} aria-label="Message" disabled={thinking} />
+            <button className="btn primary" type="submit" disabled={thinking}>
               {picked.length && !text.trim() ? "Apply" : "Send"}
             </button>
           </form>

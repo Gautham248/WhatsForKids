@@ -2,7 +2,7 @@
 // Raw text lives only in this in-memory chat object. Only coded slots are ever persisted.
 
 import { Band, BudgetCap, BUDGETS, CATEGORIES, Data, Gender, HistoryEntry, INTERESTS, Occasion, Recipient, Slots, bandLabel, budgetLabel, BANDS } from "./types";
-import { askFor, describeSlots, llmParse, mergeSlots, missingSlots, needsLlm, relatedSearch, rulesParse, Parse } from "./parser";
+import { askFor, describeSlots, llmCost, llmParse, mergeModelBelowRules, mergeSlots, missingSlots, needsLlm, relatedSearch, rulesParse, validateModelSlots, Parse } from "./parser";
 import { certSearch, search, SearchResult } from "./rank";
 
 export type Act =
@@ -60,7 +60,7 @@ export interface TurnInfo {
   parsed?: Slots;
   after: Slots;
   result?: SearchResult;
-  llm?: { tin: number; tout: number; costRs: number; notes: string[] };
+  llm?: { mode: "simulated" | "real"; tin: number; tout: number; costRs: number; notes: string[] };
   /** What the parser understood beyond the slots. Memory only, never stored. */
   parse?: Pick<Parse, "confidence" | "excluded" | "conflicts" | "corrections" | "fixes">;
   costRs: number;
@@ -258,8 +258,23 @@ export interface TurnOut {
   history?: HistoryEntry;
 }
 
+/** What the real model route sent back for this message, or why it failed. `raw` is checked again here. */
+export type ModelEvent = { raw: unknown; tokensIn: number; tokensOut: number } | { failed: string };
 // deviceCapped: the store says this guest device has used up today's typed messages (counted across chats).
-export type TurnEvent = { kind: "text"; text: string; acts?: Act[]; deviceCapped?: boolean } | { kind: "act"; act: Act };
+// model: only present when the store called /api/parse (Ops switch on "Real").
+export type TurnEvent = { kind: "text"; text: string; acts?: Act[]; deviceCapped?: boolean; model?: ModelEvent } | { kind: "act"; act: Act };
+
+const cleanText = (raw: string) => raw.trim().slice(0, 300);
+
+/** Before a typed turn: would the rules hand this message to the real model? Pure; the store uses it to decide on a fetch. */
+export function planTextTurn(d: Data, prev: Chat, raw: string, deviceCapped = false): { text: string; callModel: boolean; why: string } {
+  const text = cleanText(raw);
+  const cap = d.user ? d.ops.userCap : d.ops.guestCap;
+  if (!text || prev.typed >= cap || (!d.user && deviceCapped)) return { text, callModel: false, why: "guard" };
+  const dec = needsLlm(rulesParse(text), text);
+  const callModel = dec.llm && !d.ops.llmDisabled && d.ops.parserModel === "real";
+  return { text, callModel, why: dec.why };
+}
 
 export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): TurnOut {
   const chat: Chat = { ...prev, msgs: [...prev.msgs], shown: [...prev.shown] };
@@ -382,7 +397,7 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
   }
 
   const rules = rulesParse(text);
-  const dec = needsLlm(rules);
+  const dec = needsLlm(rules, text);
   let parse: Parse = rules;
   let path: TurnInfo["path"] = "text-rules";
   let why = dec.why;
@@ -391,11 +406,30 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     if (d.ops.llmDisabled) {
       notes.push("Model calls are switched off (daily spend cap reached). Falling back to rules only.");
       why = `${dec.why}; model disabled, using rules result`;
+    } else if (d.ops.parserModel === "real") {
+      const m = ev.kind === "text" ? ev.model : undefined;
+      if (!m || "failed" in m) {
+        const reason = m ? m.failed : "no answer";
+        notes.push(`Real model failed (${reason}). Using the rules result; nothing was charged.`);
+        why = `${dec.why}; real model failed (${reason}), using rules result`;
+      } else {
+        const v = validateModelSlots(m.raw);
+        const merged = mergeModelBelowRules(rules, v);
+        parse = merged.parse;
+        path = "text-llm";
+        const costRs = llmCost(m.tokensIn, m.tokensOut);
+        const mnotes = [merged.filled.length ? `filled ${merged.filled.join(", ")} (rules kept first say)` : "added nothing the rules had not found"];
+        if (v.dropped.length) mnotes.push(`dropped values outside the fixed lists: ${v.dropped.join(", ")}`);
+        if (merged.parse.conflicts && !rules.conflicts) mnotes.push("model saw several ages: asking which child");
+        llm = { mode: "real", tin: m.tokensIn, tout: m.tokensOut, costRs, notes: mnotes };
+        llmCostRs = costRs;
+        chat.llmCalls++;
+      }
     } else {
       const r = llmParse(text, chat.slots);
       parse = r.parse;
       path = "text-llm";
-      llm = { tin: r.tokensIn, tout: r.tokensOut, costRs: r.costRs, notes: r.notes };
+      llm = { mode: "simulated", tin: r.tokensIn, tout: r.tokensOut, costRs: r.costRs, notes: r.notes };
       llmCostRs = r.costRs;
       chat.llmCalls++;
     }

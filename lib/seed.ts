@@ -187,6 +187,9 @@ const rainbowProfile = (p: Product): Profile => ({
   source: "Curator (demo)",
 });
 
+/** Shape version of the saved demo data. Bump it (and the store key) when Data or Ops changes shape. */
+export const DATA_VERSION = 5;
+
 export function makeSeed(now: Date): Data {
   const day = (n: number) => isoDay(addDays(now, n));
   const brands = makeBrands(now);
@@ -286,7 +289,7 @@ export function makeSeed(now: Date): Data {
   const log = products.map((p, i) => ({ id: `l-${i}`, productId: p.id, from: null, to: p.status, at: day(-30), actor: "Seed (demo)" }));
 
   return {
-    v: 4,
+    v: DATA_VERSION,
     baseDate: isoDay(now),
     brands,
     products,
@@ -307,6 +310,6 @@ export function makeSeed(now: Date): Data {
     children: [],
     consents: [],
     deletionRequests: [],
-    ops: { llmDisabled: false, clockOffsetDays: 0, breakAdapter: false, guestCap: 5, userCap: 10, catalogueVersion: 1, llmCalls: 0, llmCostRs: 0, annotate: false, inspector: false, limitSpecific: 3, limitVague: 6, exposureWarnPct: 50, minPerCell: 3, dailyCapRs: 25, monthlyBudgetRs: 500, spendByDay: {}, alerts: [], guestDailyCap: 15, sponsoredOn: true },
+    ops: { llmDisabled: false, clockOffsetDays: 0, breakAdapter: false, guestCap: 5, userCap: 10, catalogueVersion: 1, llmCalls: 0, llmCostRs: 0, annotate: false, inspector: false, limitSpecific: 3, limitVague: 6, exposureWarnPct: 50, minPerCell: 3, dailyCapRs: 25, monthlyBudgetRs: 500, spendByDay: {}, alerts: [], guestDailyCap: 15, sponsoredOn: true, parserModel: "simulated" },
   };
 }

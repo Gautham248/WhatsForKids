@@ -271,6 +271,7 @@ export interface Ops {
   alerts?: SpendAlert[];
   guestDailyCap?: number; // typed guest messages per device per day, across chats
   sponsoredOn?: boolean; // master switch for the sponsored slot
+  parserModel?: "simulated" | "real"; // which model reads messages the rules cannot; "real" calls /api/parse
 }
 export interface SpendAlert {
   at: string; // demo-clock date

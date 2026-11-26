@@ -81,7 +81,7 @@ function score(c: GoldenCase): Result {
     }
   }
 
-  const { llm, why } = needsLlm(p);
+  const { llm, why } = needsLlm(p, c.text);
   return { c, pass: diffs.length === 0, diffs, slotChecks, llm, why };
 }
 

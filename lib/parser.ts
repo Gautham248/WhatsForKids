@@ -2,9 +2,10 @@
 //   1. rulesParse(): ordinary code (regex + word lists in lexicon.ts). Free and instant. It also reads
 //      number words, shorthand budgets ("1.5k", "do hazaar"), school stages, common Hinglish and
 //      unambiguous typos, so most messages never need a model.
-//   2. llmParse():  SIMULATED model call. In production a small model (Haiku-class) returns the
-//      same JSON for messages the rules cannot cover. Here it is just a normaliser in front of the
-//      same rules, so the demo needs no API key.
+//   2. A model, only for messages the rules cannot cover. By default this is llmParse(), a SIMULATED
+//      call (a normaliser in front of the same rules), so the demo needs no API key. With the Ops switch
+//      on "Real", app/api/parse calls Claude Haiku with MODEL_SLOT_SCHEMA; its answer is checked by
+//      validateModelSlots() and merged below the rules by mergeModelBelowRules().
 // Output is always a coded slot object, never free text.
 
 import { Band, BANDS, BudgetCap, BUDGETS, Gender, Occasion, Recipient, Slots, CATEGORIES, INTERESTS, bandLabel, budgetLabel } from "./types";
@@ -535,14 +536,17 @@ function nearWord(w: string): string | null {
   return cands.length === 1 ? cands[0] : null;
 }
 
-/** Decide whether the rules are enough or a model call is needed. */
-export function needsLlm(p: Parse): { llm: boolean; why: string } {
+/** Decide whether the rules are enough or a model call is needed. `text` is the message, for its length. */
+export function needsLlm(p: Parse, text = ""): { llm: boolean; why: string } {
   if (p.reset) return { llm: false, why: "reset phrase matched by rules" };
   if (["advice", "greeting", "cert", "out_of_range"].includes(p.intent)) return { llm: false, why: `intent '${p.intent}' matched by rules` };
-  const hasSlots = Object.keys(p.slots).length > 0 || p.clear.length > 0;
-  if (!hasSlots) return { llm: true, why: "rules found no slot" };
-  const odd = p.unexplained.filter((w) => nearWord(w) || w in NUM_WORDS || ["turning", "turned", "bday"].includes(w));
-  if (odd.length) return { llm: true, why: `possible typo or number word: ${odd.join(", ")}` };
+  if (p.conflicts?.ages) return { llm: false, why: "several ages: the rules ask which child" };
+  const nSlots = Object.keys(p.slots).length;
+  if (!nSlots && !p.clear.length) return { llm: true, why: "rules found no slot" };
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  if (words > 15 && nSlots <= 1) return { llm: true, why: `long message (${words} words) with only ${nSlots} slot found` };
+  if (p.excluded?.other.length) return { llm: true, why: `negation the rules could not map: ${p.excluded.other.join(", ")}` };
+  if (nSlots === 1 && p.confidence.age === "low") return { llm: true, why: "only a guessed age (life-stage word) found" };
   if (p.unexplained.length > 3) return { llm: true, why: `${p.unexplained.length} words left unexplained` };
   return { llm: false, why: "rules explain the message" };
 }
@@ -590,6 +594,113 @@ export function llmParse(text: string, prev: Slots): LlmResult {
   const tin = 650 + Math.ceil(text.length / 4) + Math.ceil(JSON.stringify(prev).length / 4);
   const tout = 120;
   return { parse, tokensIn: tin, tokensOut: tout, costRs: llmCost(tin, tout), notes };
+}
+
+// ---------- real model (Ops switch "Real"): the form it fills, the check on its answer, the merge ----------
+// Pure, so smoke.ts can test them. The call itself lives in app/api/parse/route.ts.
+
+export type ModelIntent = "search" | "greeting" | "advice" | "other";
+const MODEL_INTENTS: ModelIntent[] = ["search", "greeting", "advice", "other"];
+const RECIPIENTS: Recipient[] = ["own", "gift"];
+const OCCASIONS: Occasion[] = ["birthday", "festival", "return_gift"];
+const GENDERS: Gender[] = ["boy", "girl"];
+const orNull = (s: Record<string, unknown>) => ({ anyOf: [s, { type: "null" }] });
+
+/** The only shape the model may answer with: the fixed lists from types.ts, nothing free-form. */
+export const MODEL_SLOT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["intent", "age", "budget", "category", "interests", "recipient", "occasion", "gender", "personalisable", "ages_mentioned"],
+  properties: {
+    intent: { type: "string", enum: MODEL_INTENTS },
+    age: orNull({ type: "string", enum: BANDS }),
+    budget: orNull({ type: "integer", enum: BUDGETS }),
+    category: orNull({ type: "string", enum: Object.keys(CATEGORIES) }),
+    interests: { type: "array", items: { type: "string", enum: Object.keys(INTERESTS) } },
+    recipient: orNull({ type: "string", enum: RECIPIENTS }),
+    occasion: orNull({ type: "string", enum: OCCASIONS }),
+    gender: orNull({ type: "string", enum: GENDERS }),
+    personalisable: { type: "boolean" },
+    ages_mentioned: { type: "array", items: { type: "string", enum: BANDS } },
+  },
+} as const;
+
+export interface ModelSlots {
+  intent: ModelIntent;
+  slots: Slots;
+  agesMentioned: Band[];
+  /** Values thrown away because they were outside the fixed lists. */
+  dropped: string[];
+}
+
+/** Keep only values from the fixed lists; at most 2 interests. Never trusts the model's JSON. */
+export function validateModelSlots(raw: unknown): ModelSlots {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const dropped: string[] = [];
+  const pick = <T,>(k: string, allowed: readonly T[]): T | undefined => {
+    const v = r[k];
+    if (v === null || v === undefined) return undefined;
+    if (allowed.includes(v as T)) return v as T;
+    dropped.push(`${k}=${JSON.stringify(v)}`);
+    return undefined;
+  };
+  const list = <T,>(k: string, allowed: readonly T[]): T[] => {
+    const v = r[k];
+    if (!Array.isArray(v)) return [];
+    const ok = v.filter((x) => allowed.includes(x as T)) as T[];
+    v.filter((x) => !allowed.includes(x as T)).forEach((x) => dropped.push(`${k}=${JSON.stringify(x)}`));
+    return [...new Set(ok)];
+  };
+  const slots: Slots = {};
+  const age = pick("age", BANDS);
+  if (age) slots.age = age;
+  const budget = pick("budget", BUDGETS);
+  if (budget) slots.budget = budget;
+  const category = pick("category", Object.keys(CATEGORIES));
+  if (category) slots.category = category;
+  const interests = list("interests", Object.keys(INTERESTS));
+  if (interests.length > 2) dropped.push(`interests beyond 2: ${interests.slice(2).join(", ")}`);
+  if (interests.length) slots.interests = interests.slice(0, 2);
+  const recipient = pick("recipient", RECIPIENTS);
+  if (recipient) slots.recipient = recipient;
+  const occasion = pick("occasion", OCCASIONS);
+  if (occasion) slots.occasion = occasion;
+  const gender = pick("gender", GENDERS);
+  if (gender) slots.gender = gender;
+  if (r.personalisable === true) slots.personalisable = true;
+  const intent = pick("intent", MODEL_INTENTS) ?? "other";
+  return { intent, slots, agesMentioned: list("ages_mentioned", BANDS), dropped };
+}
+
+/** The rules win: the model only fills slots the rules left empty, and never undoes a clear, exclusion or conflict. */
+export function mergeModelBelowRules(rules: Parse, m: ModelSlots): { parse: Parse; filled: (keyof Slots)[] } {
+  const slots: Slots = { ...rules.slots };
+  const confidence = { ...rules.confidence };
+  const filled: (keyof Slots)[] = [];
+  const ex = rules.excluded;
+  const blocked = (k: keyof Slots) => rules.clear.includes(k) || (k === "age" && !!rules.conflicts?.ages);
+  for (const [k, v] of Object.entries(m.slots) as [keyof Slots, unknown][]) {
+    if (slots[k] !== undefined || blocked(k)) continue;
+    let val = v;
+    if (k === "interests") val = (v as string[]).filter((i) => !ex?.interests.includes(i));
+    if (k === "category" && ex?.categories.includes(v as string)) continue;
+    if (Array.isArray(val) && !val.length) continue;
+    (slots as Record<string, unknown>)[k] = val;
+    confidence[k] = "high";
+    filled.push(k);
+  }
+  let conflicts = rules.conflicts;
+  const ages = [...new Set(m.agesMentioned)];
+  if (!conflicts && !rules.slots.age && ages.length >= 2) {
+    conflicts = { ages: BANDS.filter((b) => ages.includes(b)) };
+    delete slots.age;
+    delete confidence.age;
+    const at = filled.indexOf("age");
+    if (at >= 0) filled.splice(at, 1);
+  }
+  // Only an "other" from the rules can be changed, and never to cert or out_of_range (those stay rules-only).
+  const intent: Intent = rules.intent === "other" ? (m.intent === "search" && !filled.length && !conflicts ? "other" : m.intent) : rules.intent;
+  return { parse: { ...rules, slots, confidence, intent, ...(conflicts ? { conflicts } : {}) }, filled };
 }
 
 export function mergeSlots(prev: Slots, inc: Slots, clear: (keyof Slots)[] = [], reset = false): Slots {

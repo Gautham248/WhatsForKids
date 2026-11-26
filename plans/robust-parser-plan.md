@@ -194,6 +194,27 @@ Each phase is one commit on `feature/thoughts-questions`, made only after the ow
   - A conflict-only message with no other details still goes through the (simulated) model, because `needsLlm` sees no slot. This is for Phase D's trigger update.
   - The echo pills show only band and budget labels.
 
+### After Phase D (2026-11-26)
+- **Built:**
+  - `MODEL_SLOT_SCHEMA`, `validateModelSlots` and `mergeModelBelowRules` in `lib/parser.ts`;
+  - `planTextTurn` and `TurnEvent.model` in `lib/chat.ts`;
+  - `app/api/parse/route.ts` (Claude Haiku 5.5, structured output, 2 s timeout, no retries, thinking off, low effort, per-IP limit, `GET` health check);
+  - async `send()` with a 2.5 s abort and a "Thinking…" state;
+  - the Ops switch (Simulated / Real) with route status;
+  - `@anthropic-ai/sdk` 1.14.0.
+- **Version:** `DATA_VERSION = 5` is exported from `lib/seed.ts`, and the store key is `wfk-demo-v5`. `load()` now compares against `DATA_VERSION`, so saved data survives a reload (approved by the owner).
+- **`needsLlm` changes:**
+  - Now calls the model for: more than 15 words with at most 1 slot, a negation with words the rules can't map, or a lone life-stage age.
+  - No longer calls it for: a several-ages conflict, typos or number words.
+- **Golden set:** 209/214 cases, `--strict` passes. Would call the model: 15.4% (up from 11.2%; mostly the new negation trigger).
+- **Checks:**
+  - `test:logic` gives `ALL OK` (171 checks, including validation, merge, triggers, failure, injection and gender).
+  - The scratch build passes.
+  - Run with no key: `GET /api/parse` returns `configured: false`, and `POST` returns 503 "not configured". No message text appears in the server log.
+- **Not yet checked:**
+  - The browser flow.
+  - Real mode with a key (needs `ANTHROPIC_API_KEY` and `PARSER_MODEL_ENABLED=1`).
+
 ### Decisions still open
 - ~~Confirm that grade-to-age is grade + 5.~~ Confirmed by the owner on 2026-11-26: class, grade or std N means age N + 5.
 - Decide whether exclusions should later filter results (needs ranking work; out of scope now).

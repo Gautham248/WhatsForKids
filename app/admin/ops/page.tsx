@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import { BANDS, CATEGORIES, DEFAULT_LIMITS, bandLabel } from "@/lib/types";
 import { exposure } from "@/lib/rank";
 import { DEFAULT_CAPS } from "@/lib/admin";
@@ -20,6 +21,12 @@ export default function Ops() {
   const today = todayOf(d);
   const ex = exposure(d);
   const pname = (id: string) => d.products.find((p) => p.id === id)?.name ?? id;
+  // Is the real-model route set up on the server (key + PARSER_MODEL_ENABLED)? null = still checking.
+  const [route, setRoute] = useState<boolean | null>(null);
+  useEffect(() => {
+    fetch("/api/parse").then((r) => r.json()).then((j) => setRoute(!!j.configured)).catch(() => setRoute(false));
+  }, []);
+  const real = d.ops.parserModel === "real";
   const clock = (n: number) => update((x) => void (x.ops.clockOffsetDays = n === 0 ? 0 : x.ops.clockOffsetDays + n));
   return (
     <>
@@ -38,14 +45,24 @@ export default function Ops() {
         <div className="card">
           <h2>Cost and abuse controls</h2>
           <label className="row"><input type="checkbox" checked={d.ops.llmDisabled} onChange={(e) => update((x) => void (x.ops.llmDisabled = e.target.checked))} /> <b>Model kill-switch</b> (simulates the daily spend cap being hit)</label>
-          <p className="small muted">When on, messages the rules cannot parse fall back to tap options. Try a typo query in the chat.</p>
+          <p className="small muted">When on, messages the rules cannot parse fall back to tap options, whichever parser model is chosen below.</p>
+          <div className="row" style={{ gap: 12, marginTop: 6 }}>
+            <b>Parser model</b>
+            <label className="row"><input type="radio" name="parserModel" checked={!real} onChange={() => update((x) => void (x.ops.parserModel = "simulated"))} /> Simulated (free, no key)</label>
+            <label className="row"><input type="radio" name="parserModel" checked={real} onChange={() => update((x) => void (x.ops.parserModel = "real"))} /> Real (Claude Haiku)</label>
+          </div>
+          <p className="small">
+            Server route: {route === null ? "checking…" : route ? <span className="badge good">configured</span> : <span className="badge warn">not configured</span>}
+            {real && route === false ? " Real calls will fail and the chat will use the rules result, at no cost." : ""}
+          </p>
+          <p className="small muted">Real sends only the new message (up to 300 characters) and the current slots to the server, which asks the model to fill the same slot form. Values outside the fixed lists are dropped, and the rules always win. If it fails or takes over 2 seconds, the rules result is used.</p>
           <div className="row">
             <label className="f" style={{ width: 150 }}>Guest turn cap<input type="number" min={1} value={d.ops.guestCap} onChange={(e) => update((x) => void (x.ops.guestCap = Math.max(1, Number(e.target.value))))} /></label>
             <label className="f" style={{ width: 150 }}>Signed-in turn cap<input type="number" min={1} value={d.ops.userCap} onChange={(e) => update((x) => void (x.ops.userCap = Math.max(1, Number(e.target.value))))} /></label>
             <label className="f" style={{ width: 170 }} title="Results when age and category are both known">Results, specific request<input type="number" min={1} max={12} value={d.ops.limitSpecific ?? DEFAULT_LIMITS.specific} onChange={(e) => update((x) => void (x.ops.limitSpecific = Math.min(12, Math.max(1, Number(e.target.value)))))} /></label>
             <label className="f" style={{ width: 170 }} title="Results for anything less specific">Results, vague request<input type="number" min={1} max={12} value={d.ops.limitVague ?? DEFAULT_LIMITS.vague} onChange={(e) => update((x) => void (x.ops.limitVague = Math.min(12, Math.max(1, Number(e.target.value)))))} /></label>
           </div>
-          <p className="small">Model calls so far in this browser: <b>{d.ops.llmCalls}</b>, simulated cost <b>₹{d.ops.llmCostRs.toFixed(4)}</b>.</p>
+          <p className="small">Model calls so far in this browser: <b>{d.ops.llmCalls}</b>, {real ? "cost" : "simulated cost"} <b>₹{d.ops.llmCostRs.toFixed(4)}</b>.</p>
           <Note>Real build: hard monthly cap at the provider (client sets the budget, B6), plus an app-level daily counter in <code>llm_usage</code>, plus per-IP and per-device daily caps. The 5-turn guest cap is a proposal.</Note>
         </div>
       </div>
