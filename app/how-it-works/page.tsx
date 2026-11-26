@@ -29,10 +29,12 @@ const TESTS: { id: string; what: string; how: string; href: string }[] = [
   { id: "B4", what: "Scraper, fixtures, regression", how: "Admin → Scraper: scrape a sample URL, run the regression suite, then tick “simulate an adapter bug” and run it again.", href: "/admin/scraper" },
   { id: "B4", what: "Changed values need approval", how: "Scraper → Run refresh on Tinker & Co, then open Approvals. Until approved the product page keeps the old price.", href: "/admin/diffs" },
   { id: "B5", what: "No raw chat stored, provider register, deletion", how: "Inspector shows what is persisted: coded slots only (age band, budget, category, interests, gift or own, occasion, boy or girl, personalisable), never chat text. Impressions and chat counts are product ids and numbers only. Admin → Ops has the register. Account → Delete account.", href: "/admin/ops" },
-  { id: "Cost", what: "Spend cap and alerts", how: "Admin → Ops: set the model daily cap to ₹0.02, then type “five yr old likes dinasaurs” a few times. Alerts fire once at 50%, 80% and 100%; at 100% the model switches itself off and chat carries on with the free rules.", href: "/admin/ops" },
+  { id: "Cost", what: "Spend cap and alerts", how: "Admin → Ops: set the model daily cap to ₹0.02, then type “something for a kid who is 4” a few times. Alerts fire once at 50%, 80% and 100%; at 100% the model switches itself off and chat carries on with the free rules.", href: "/admin/ops" },
   { id: "Cost", what: "Guest limits", how: "5 typed messages per guest chat, and 15 per device per day across chats (New chat does not reset it). Then the guest is asked to sign in; pills keep working. Both caps are in Admin → Ops.", href: "/admin/ops" },
   { id: "Money", what: "Is it working?", how: "Admin → Events shows the three numbers: share of chats that end in a brand click, clicks per chat, and sales reported by brands (import a sample in Admin → CSV → Brand sales report).", href: "/admin/events" },
   { id: "Money", what: "Sponsored slot", how: "Search for a 9 year old: the gear set shows at position 2, labelled Sponsored. Magnetic tiles pays too but is not published, so it never appears. Payment buys position, never entry: the product must pass the gate and match the search. Switch it off in Admin → Ops.", href: "/" },
+  { id: "Chat", what: "Understands messy messages", how: "Type “budget 1.5k, five yr old likes dinasaurs”: the free rules read the shorthand, the number word and the typo. Try “toys for my 4 and 9 year olds” (asks which child), “5 year old who loves dinosaurs and space” then “no dinosaurs” (leaves them out and says so), “toy for a toddler” (checks the guessed age) and “actually make it 6” (corrects). Turn on the Inspector to see what was understood.", href: "/" },
+  { id: "Cost", what: "Real model behind a switch", how: "Admin → Ops → Parser model: Simulated (default, nothing leaves the browser) or Real (Claude Haiku via our server route, only the new message and current slots are sent). Without a server key Ops shows “not configured” and the chat quietly uses the rules at no cost. The model only fills the fixed slot form; its values are checked again and the rules always win.", href: "/admin/ops" },
   { id: "Cost", what: "Cheap by design", how: "Compare a tapped turn (free), a typed turn the rules parse (free) and “something for a kid who is 4” (the rules find nothing, so a simulated model call, ~₹0.01). Flip the model kill-switch in Ops.", href: "/admin/ops" },
 ];
 
@@ -47,7 +49,7 @@ export default function HowItWorks() {
       <h1>How this demo works</h1>
       <div className="card">
         <p>
-          This is a <b>clickable demo</b> of the What&apos;s for Kids platform for designers and engineers. Everything is dummy data, nothing is sent anywhere, and your changes live only in this browser. Use <b>Annotations</b> (top bar) to see where each piece of the UI gets its data and <b>Inspector</b> (on the Chat page) to see what the system does on each turn.
+          This is a <b>clickable demo</b> of the What&apos;s for Kids platform for designers and engineers. Everything is dummy data, nothing is sent anywhere (unless the real parser model is switched on in Admin → Ops), and your changes live only in this browser. Use <b>Annotations</b> (top bar) to see where each piece of the UI gets its data and <b>Inspector</b> (on the Chat page) to see what the system does on each turn.
         </p>
       </div>
 
@@ -69,8 +71,8 @@ export default function HowItWorks() {
             <div className="flow" style={{ marginTop: 6 }}>
               <div className="box">Chat / taps<br /><span className="muted small">typed text + picked pills</span></div><span className="arrow">→</span>
               <div className="box">Guards<br /><span className="muted small">chat · device · spend caps · length</span></div><span className="arrow">→</span>
-              <div className="box">Rules parser<br /><span className="muted small">free · taps skip it</span></div><span className="arrow">→</span>
-              <div className="box" style={{ borderStyle: "dashed" }}>Small model<br /><span className="muted small">only if rules can&apos;t</span></div><span className="arrow">→</span>
+              <div className="box">Rules parser<br /><span className="muted small">free · taps skip it · typos, Hinglish, “not”, two ages</span></div><span className="arrow">→</span>
+              <div className="box" style={{ borderStyle: "dashed" }}>Small model<br /><span className="muted small">only if rules can&apos;t · ~15% of typed turns</span></div><span className="arrow">→</span>
               <div className="box">Filter + rank<br /><span className="muted small">deterministic SQL · ≤1 sponsored</span></div><span className="arrow">→</span>
               <div className="box">Result cards<br /><span className="muted small">reason by tag · follow-up pills</span></div><span className="arrow">→</span>
               <div className="box">Product page</div><span className="arrow">→</span>
@@ -89,7 +91,7 @@ export default function HowItWorks() {
           <tbody>
             <tr><td>Data store</td><td>Your browser (localStorage)</td><td>Postgres on one India-region VPS</td></tr>
             <tr><td>Rules parser, ranking, diversity, reason pick</td><td><b>Real logic</b></td><td>Same logic, server side</td></tr>
-            <tr><td>Model call</td><td>Simulated (fixes number words, typos, slang) with real token and cost maths</td><td>Small model returning a strict JSON slot object</td></tr>
+            <tr><td>Model call</td><td>Simulated by default (rules re-run, real token and cost maths); <b>Real</b> Claude Haiku behind an Ops switch, structured output, 2 s timeout</td><td>Small model returning a strict JSON slot object</td></tr>
             <tr><td>Scraper adapters and fixtures</td><td><b>Real parsers</b> on saved sample pages; fetch is simulated</td><td>HTTP fetcher with robots, 1 request/s, SSRF guard, CI fixtures</td></tr>
             <tr><td>Evidence, claim lint, publish gate</td><td><b>Real rules</b>, computed on read</td><td>DB view, DB function, nightly sweep</td></tr>
             <tr><td>Google sign-in</td><td>Fake account chooser</td><td>Google OAuth through Auth.js</td></tr>

@@ -215,6 +215,17 @@ Each phase is one commit on `feature/thoughts-questions`, made only after the ow
   - The browser flow.
   - Real mode with a key (needs `ANTHROPIC_API_KEY` and `PARSER_MODEL_ENABLED=1`).
 
+### After Phase E (2026-11-26): plan complete
+- **Docs updated to match the behaviour:**
+  - `docs/docs/03-parser.md`: the built items moved from "target design" to "implemented", plus the route, the reply templates, the golden results and what isn't built yet.
+  - `docs/docs/parser-working.md`: plain-English explainer refreshed with current results; committed for the first time.
+  - `docs/CLAUDE.md`: optional server route and key, `test:golden`, `DATA_VERSION`, never commit `.env.local`.
+  - `app/how-it-works/page.tsx`: new "Understands messy messages" and "Real model behind a switch" rows, model row in the real-vs-faked table, flow labels, spend-cap example.
+  - Small line fixes in `06-demo-internals.md` (file map, Ops switch, storage key) and `07-experiments.md` (A1–A6 marked done or partly done).
+  - Ops page note.
+- **Spend-cap example:** now uses "something for a kid who is 4". "five yr old likes dinasaurs" no longer calls the model.
+- **`TRY` pill:** "five yr old likes dinasaurs" is kept; it now shows the free rules.
+
 ### Decisions still open
 - ~~Confirm that grade-to-age is grade + 5.~~ Confirmed by the owner on 2026-11-26: class, grade or std N means age N + 5.
 - Decide whether exclusions should later filter results (needs ranking work; out of scope now).

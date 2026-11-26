@@ -5,9 +5,11 @@
 | Path | Role |
 | --- | --- |
 | `lib/types.ts` | All types, vocabularies (BANDS, BUDGETS, CATEGORIES, INTERESTS), status stages, `Data` root object |
-| `lib/seed.ts` | `makeSeed(now)`: 6 brands (Banyan's authorisation expired on purpose), ~27 products across all stages, evidence, profiles, reason lines, routes, status log. `v` = seed version |
+| `lib/seed.ts` | `makeSeed(now)`: 6 brands (Banyan's authorisation expired on purpose), ~27 products across all stages, evidence, profiles, reason lines, routes, status log. `DATA_VERSION` = saved-data version |
 | `lib/fixtures.ts` | 10 dated saved brand pages (Shopify JSON, JSON-LD, CSV, custom HTML) generated from specs |
-| `lib/parser.ts` | Rules parser, simulated model parser, merge, cache key, missing-detail list, related search for advice |
+| `lib/parser.ts` | Rules parser (normaliser, negation, conflicts, corrections, confidence), when to call a model, simulated model parser, real-model schema/validation/merge, cache key, missing-detail list, related search for advice |
+| `lib/lexicon.ts` | Word lists for the parser: categories, interests, Hinglish, number words, negation cues |
+| `app/api/parse/route.ts` | The only server code: calls Claude Haiku for the real parser model. Off unless `ANTHROPIC_API_KEY` and `PARSER_MODEL_ENABLED=1` are set |
 | `lib/rank.ts` | Search, scoring, diversity, sponsored slot, reason pick, relaxations, cert search, impressions/exposure |
 | `lib/chat.ts` | `runTurn(d, chat, event)`: the whole turn as a pure function. Pills, guards, intents, responses |
 | `lib/gate.ts` | Demo clock, evidence currency, claim lint, publish gate, visibility |
@@ -32,7 +34,7 @@
   (`children[]`), consents, deletion requests, impressions, chat sessions, brand sales, and `ops`.
 - `useApp()` exposes `d` (data), `update(fn)` (mutate a draft then persist), `chat`, `chatId`,
   `send(text, acts?)`, `act(action)`, `newChat()`, `reset()`, login helpers and `toast`.
-- Persistence: `localStorage["wfk-demo-v4"]` (bumped with each seed-shape change). Browser-only extras:
+- Persistence: `localStorage["wfk-demo-v5"]` (bumped with `DATA_VERSION` in `lib/seed.ts` on each saved-shape change). Browser-only extras:
   `wfk-guest-day` (guest typed messages today on this device) and `wfk-bought-<code>` (wishlist marks). Seed version `v` mismatch -> reseed. Every visitor has an
   independent copy, so a shared Vercel link never mixes people's changes.
 - `runTurn` returns `{ chat, shownIds, llmCostRs, history? }`; the store counts impressions from
@@ -44,6 +46,7 @@
 | Switch | Effect |
 | --- | --- |
 | Demo clock +N days (`clockOffsetDays`) | Time-travels evidence expiry, staleness, scraper dates |
+| Parser model (`parserModel`) | Simulated (default) or Real (Claude Haiku via `/api/parse`); shows whether the route is configured |
 | Model kill-switch (`llmDisabled`) | Typed turns that would call the model fall back to rules. Also set automatically at 100% of a cap |
 | Model daily cap / monthly budget (`dailyCapRs`, `monthlyBudgetRs`) | Alerts at 50/80/100%; 100% switches the model off |
 | Result counts (`limitSpecific`, `limitVague`) | 3 / 6 by default, 1–12 |
@@ -81,7 +84,7 @@ Deployment Protection for a team-only link.
 | `Data` in localStorage | Postgres (see `schema.sql`); `lib/*` functions take a repository instead of `Data` |
 | `evidenceCurrent`, `visibility`, `publishGate` | `evidence_current`, `product_visible`, `publish_gate()` + trigger |
 | in-process cache `Map` | in-process LRU keyed `version:date:slotKey` |
-| `llmParse` simulated | real model call returning slot JSON, validated against lookup tables |
+| `llmParse` simulated (Real mode optional) | real model call returning slot JSON, validated against lookup tables (built: `/api/parse` + `validateModelSlots`) |
 | fixture lookup fetch | `Fetcher` interface (undici, robots, rate limit, SSRF) |
 | `runTurn` pure function | same, behind an API route; session caps from `session` table |
 | fake login/consent | Auth.js Google + `consent_record` with client-defined verification |

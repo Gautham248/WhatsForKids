@@ -5,7 +5,7 @@ Each experiment lists the files to touch and how to know it worked. Always finis
 
 ## A. Parser (highest value; the real work is dictionaries and tests)
 
-**A1. Golden set harness.** Create `scripts/golden.ts` with ~50 cases first, grow to ~200:
+**A1. Golden set harness.** *Done: `scripts/golden.ts`, 214 cases, `npm run test:golden`.* Create `scripts/golden.ts` with ~50 cases first, grow to ~200:
 
 ```ts
 { text: "5yo, loves lego, budget around 1.5k", expect: { age: "3-5", budget: 1000, interests: ["building"] } }
@@ -16,20 +16,20 @@ Each experiment lists the files to touch and how to know it worked. Always finis
 Run `rulesParse` (and `llmParse` when `needsLlm`) and report per-slot accuracy plus "% needing model".
 Goal: model share <= ~20% of typed turns.
 
-**A2. Number formats.** Add `1.5k`, `2k`, `Rs.1,500/-`, `two thousand`, `18mo`, `class 2`, `std 3` to
+**A2. Number formats.** *Done (normaliser in `lib/parser.ts`).* Add `1.5k`, `2k`, `Rs.1,500/-`, `two thousand`, `18mo`, `class 2`, `std 3` to
 `budgetFrom` / `ageFrom` (and `llmParse` for words). Cases in the golden set first.
 
-**A3. Negations / exclusions.** "not noisy", "no screens", "nothing with batteries". Add `exclude?: string[]`
+**A3. Negations / exclusions.** *Detection done (`Parse.excluded`, the reply says what is left out); filtering in `rank.ts` is still open.* "not noisy", "no screens", "nothing with batteries". Add `exclude?: string[]`
 to `Slots`, detect negation scope in `rulesParse`, and apply in `rank.ts` `candidates()`. Needs a new
 curated field on products (for example `noisy`), so decide the vocabulary first and update `schema.sql`.
 
-**A4. Conflicts.** Two ages in one message ("4 and 9 year olds"): set `Parse.conflicts`, have `runTurn`
+**A4. Conflicts.** *Done.* Two ages in one message ("4 and 9 year olds"): set `Parse.conflicts`, have `runTurn`
 ask "Which child is this for?" with two pills. Never guess.
 
-**A5. Confidence.** Add low-confidence flags for life-stage words and "budget-ish" words; echo back low
+**A5. Confidence.** *Done (`Parse.confidence`, echoed in the reply).* Add low-confidence flags for life-stage words and "budget-ish" words; echo back low
 confidence slots as a confirmation pill.
 
-**A6. Real model.** Replace `llmParse` with an API call returning strict JSON; validate with the same
+**A6. Real model.** *Done behind the Ops switch "Parser model: Real" (`app/api/parse/route.ts`); simulated stays the default.* Replace `llmParse` with an API call returning strict JSON; validate with the same
 vocabularies; keep the simulated version behind `ops.llmDisabled`/an env flag for the demo. Check: injection
 text yields only valid slots; timeout falls back to rules and asks the one missing question.
 

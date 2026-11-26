@@ -92,7 +92,7 @@ export default function Ops() {
             ))}
           </ul>
         )}
-        <Note>Alerts fire once at 50%, 80% and 100%; at 100% the model kill-switch turns on by itself and the chat carries on with the free rules parser. Try a daily cap of ₹0.02, then type “five yr old likes dinasaurs” a few times. The guest limit counts typed messages per device per day across chats (New chat does not reset it); pills always work. Real build: email alerts plus a hard cap at the provider.</Note>
+        <Note>Alerts fire once at 50%, 80% and 100%; at 100% the model kill-switch turns on by itself and the chat carries on with the free rules parser. Try a daily cap of ₹0.02, then type “something for a kid who is 4” a few times. The guest limit counts typed messages per device per day across chats (New chat does not reset it); pills always work. Real build: email alerts plus a hard cap at the provider.</Note>
       </div>
 
       <div className="card">
