@@ -332,5 +332,44 @@ console.log("search age 6-8:", search(d, { age: "6-8" }).ranked.map((r) => d.pro
   const g2 = runTurn(e, g, { kind: "act", act: ex!.pills[0].act }).chat;
   ok(g2.slots.personalisable === true && !last(g2).groups?.some((x) => x.key === "extras") && /can be personalised/.test(last(g2).text), "tapping it filters and the pill goes away");
 }
+
+// Phase C: negation, several children, corrections, confidence, and the replies for them
+{
+  const nd = rulesParse("no dinosaurs, he likes space");
+  ok(nd.slots.interests?.join() === "space" && nd.excluded?.interests.includes("dinosaurs"), "negation: 'no dinosaurs, he likes space' → space only, dinosaurs excluded");
+  const nn = rulesParse("nothing noisy for a 3 year old");
+  ok(nn.slots.age === "3-5" && nn.excluded?.other.includes("noisy"), "negation: 'nothing noisy' → age kept, noisy in other");
+  ok(!rulesParse("not a book").slots.category, "negation: 'not a book' sets no books category");
+  ok(rulesParse("no more than 1000 for a 4 year old").slots.budget === 1000 && !rulesParse("no wait, 9 years").excluded, "'no more than' and 'no wait' are not negations");
+  const two = rulesParse("my 4 and 9 year olds");
+  ok(!two.slots.age && two.conflicts?.ages?.join() === "3-5,9-12", "several children: conflict [3-5, 9-12], no age");
+  ok(rulesParse("4-5 years").slots.age === "3-5" && !rulesParse("4-5 years").conflicts, "range in one band is not a conflict");
+  ok(rulesParse("toy for a toddler").confidence.age === "low" && rulesParse("4 year old").confidence.age === "high", "confidence: life stage low, number high");
+
+  const e = makeSeed(new Date());
+  const lastMsg = (c: { msgs: { text: string; cards?: string[]; pills?: { label: string; act: Act }[] }[] }) => c.msgs[c.msgs.length - 1];
+  const w = runTurn(e, initialChat(), { kind: "text", text: "toys for my 4 and 9 year olds under 1000" });
+  const wm = lastMsg(w.chat);
+  ok(/^Which child is this for\?/.test(wm.text) && !wm.cards?.length && wm.pills?.filter((x) => x.act.t === "age").length === 2, "reply: 'Which child?' with one pill per age, no search");
+  ok(w.chat.slots.budget === 1000 && !w.chat.slots.age, "conflict keeps the other details, sets no age");
+  const pick = runTurn(e, w.chat, { kind: "act", act: wm.pills![0].act });
+  ok(pick.chat.slots.age === "3-5" && (lastMsg(pick.chat).cards?.length ?? 0) > 0, "tapping a child's age runs the search");
+
+  const c1 = runTurn(e, initialChat(), { kind: "text", text: "something for a 4 year old" }).chat;
+  const c2 = runTurn(e, c1, { kind: "text", text: "actually make it 6" }).chat;
+  ok(c2.slots.age === "6-8", "correction: 'actually make it 6' after 3-5 → 6-8");
+
+  const d1 = runTurn(e, initialChat(), { kind: "text", text: "5 year old who loves dinosaurs and space" }).chat;
+  const d2 = runTurn(e, d1, { kind: "text", text: "no dinosaurs" }).chat;
+  ok(!d2.slots.interests?.includes("dinosaurs") && /^Leaving out dinosaurs\./.test(lastMsg(d2).text), "reply: exclusion drops an earlier interest and says so");
+  const o = runTurn(e, initialChat(), { kind: "text", text: "nothing noisy for a 3 year old" }).chat;
+  ok(/I can't filter out “noisy” yet/.test(lastMsg(o).text) && o.slots.age === "3-5", "reply: unfilterable exclusion is acknowledged honestly");
+  const lo = runTurn(e, initialChat(), { kind: "text", text: "toy for a toddler" }).chat;
+  ok(/Looking at ages 0–2\. Right\?/.test(lastMsg(lo).text) && lastMsg(lo).pills!.some((x) => x.act.t === "age"), "reply: guessed age is echoed with age pills");
+  const hi = runTurn(e, initialChat(), { kind: "text", text: "toy for a 2 year old" }).chat;
+  ok(!/Right\?/.test(lastMsg(hi).text), "reply: a number-based age is not echoed");
+  const ty = runTurn(e, initialChat(), { kind: "text", text: "dinasaurs for a 4 year old" });
+  ok(ty.chat.info?.path === "text-rules" && ty.llmCostRs === 0 && ty.chat.slots.interests?.includes("dinosaurs"), "typo handled by rules: path text-rules, cost 0");
+}
 console.log(fails ? `${fails} FAILED` : "ALL OK");
 process.exit(fails ? 1 : 0);

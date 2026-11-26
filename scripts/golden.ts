@@ -9,7 +9,7 @@ import type { Band, Slots } from "../lib/types";
 import { CASES, type Bucket, type Expect, type GoldenCase } from "./golden-cases";
 
 // Regression floors: the numbers the parser must not drop below. Raise them as each phase lands.
-const FLOOR = { slotAccuracy: 0.959, casesPassed: 174 }; // after Phase B, 2026-11-26 (Phase A baseline: 0.855, 103)
+const FLOOR = { slotAccuracy: 0.993, casesPassed: 209 }; // after Phase C, 2026-11-26 (A: 0.855/103, B: 0.959/174)
 // The plan's targets (step 6), enforced with --strict.
 const TARGET = {
   slotAccuracy: 0.9,

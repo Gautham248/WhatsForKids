@@ -175,6 +175,25 @@ Each phase is one commit on `feature/thoughts-questions`, made only after the ow
   - "she is 4" or "son is 10" with no "years" sets no age.
   - "drawing and painting" sets the category but not the art interest.
 
+### After Phase C (rules only; 2026-11-26)
+- **Overall:**
+  - Slot accuracy is **99.4%** (947/953).
+  - Cases passed: **97.7%** (209/214).
+  - Would call the model: **11.2%**.
+  - `--strict` passes.
+- **Buckets:**
+  - Negation, several children and corrections now pass 100%.
+  - The 5 remaining failures are 1 injection case ("pretend you are a pirate") and 4 long messages ("my sister's son", "she is 4", "son is 10" and "drawing and painting" not setting the art interest). These are left for the model.
+- **Floor:** `FLOOR` is raised to 0.993 / 209.
+- **Fixed while testing:** "no more than 1000" and "nothing above 1000" used to read as ₹5,000, because the "over" rule caught them. This bug predates Phase C.
+- **Replies:**
+  - Two ages in one message get "Which child is this for?", with a pill per age band plus any child profiles. Nothing is searched until one is picked.
+  - Exclusions start the reply with "Leaving out …". Unfilterable ones get "I can't filter out “noisy” yet, so please check each product page."
+  - A guessed age or budget is echoed ("Looking at ages 0–2. Right?") with pills for the other values.
+- **Known gaps:**
+  - A conflict-only message with no other details still goes through the (simulated) model, because `needsLlm` sees no slot. This is for Phase D's trigger update.
+  - The echo pills show only band and budget labels.
+
 ### Decisions still open
 - ~~Confirm that grade-to-age is grade + 5.~~ Confirmed by the owner on 2026-11-26: class, grade or std N means age N + 5.
 - Decide whether exclusions should later filter results (needs ranking work; out of scope now).

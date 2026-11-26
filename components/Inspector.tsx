@@ -48,6 +48,47 @@ export default function Inspector() {
               <pre>{JSON.stringify(i.parsed)}</pre>
             </>
           )}
+          {i.parse && (
+            <div className="kv">
+              {Object.keys(i.parse.confidence).length > 0 && (
+                <>
+                  <span className="k">Confidence</span>
+                  <span>
+                    {Object.entries(i.parse.confidence)
+                      .map(([k, v]) => `${k}: ${v}`)
+                      .join(", ")}
+                  </span>
+                </>
+              )}
+              {i.parse.excluded && (
+                <>
+                  <span className="k">Excluded</span>
+                  <span>
+                    {[...i.parse.excluded.categories, ...i.parse.excluded.interests].join(", ") || "none"}
+                    {i.parse.excluded.other.length > 0 && <span className="muted"> · not filterable yet: {i.parse.excluded.other.join(", ")}</span>}
+                  </span>
+                </>
+              )}
+              {i.parse.conflicts?.ages && (
+                <>
+                  <span className="k">Conflict</span>
+                  <span>ages {i.parse.conflicts.ages.join(" and ")}: asked which child</span>
+                </>
+              )}
+              {i.parse.corrections.length > 0 && (
+                <>
+                  <span className="k">Corrected</span>
+                  <span>{i.parse.corrections.join(", ")}</span>
+                </>
+              )}
+              {i.parse.fixes.length > 0 && (
+                <>
+                  <span className="k">Rules fixed</span>
+                  <span>{i.parse.fixes.join("; ")}</span>
+                </>
+              )}
+            </div>
+          )}
           <b className="small">Slot object after merge</b>
           <pre>{JSON.stringify(i.after)}</pre>
           <div className="small muted" style={{ margin: "4px 0 8px" }}>

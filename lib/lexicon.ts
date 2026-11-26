@@ -45,7 +45,7 @@ export const STOP = new Set(
   (
     "a an the for my is are am to of and or with me i we want need looking look find show something some good nice best ideas idea gift gifts present toy toys kid kids child children old year years yr yrs under below rs inr please can could you get buy what which recommend suggest any your our he she his her they who that this it in on at be like loves love likes who's whats what's hi hello hey there boy girl son daughter new little something that's thing things option options about around within upto up than less more much too also just only really very so then if when where how do does did would should will have has had been being from into out as by off one " +
     // Hinglish fillers and child words
-    "ka ki ke liye kuch kuchh accha acha achha chahiye chaiye hai hain mein me tak andar wala wali wale ko mera meri mere bhi aur se pasand saman samaan liye baccha bachcha bacche bachche bachchi bacchi khilona khilone tohfa tohfe beta bete beti ladka ladke ladki"
+    "ka ki ke liye kuch kuchh accha acha achha chahiye chaiye hai hain mein me tak andar wala wali wale ko mera meri mere bhi aur se pasand saman samaan liye mujhe baccha bachcha bacche bachche bachchi bacchi khilona khilone tohfa tohfe beta bete beti ladka ladke ladki"
   ).split(" "),
 );
 
@@ -100,3 +100,24 @@ export const PRODUCT_NOUNS = ["toy", "toys", "gift", "gifts", "present", "presen
 export const NOT_TYPOS = new Set(
   "print prints point points plans plays plant plane party parts paints painted stars start stage story pianos drums dress press bugs hugs mugs class glass grass brass games names frames craft draft drift lamb labs lips stamp stack stick track trick trucks bricks socks rocks books looks hooks cooks gears years tears bears dears stem steam team".split(" "),
 );
+
+// ---------- negation ("no dinosaurs", "nothing noisy", "books nahi") ----------
+
+/** Cues that negate the words after them. Longest first, so "doesnt like" wins over "like". */
+export const NEG_BEFORE = [
+  "does not like", "do not like", "did not like", "does not want", "do not want", "not a fan of",
+  "doesnt like", "dont like", "didnt like", "doesnt want", "dont want", "not into",
+  "not", "no", "nothing", "without", "avoid", "avoiding", "hate", "hates", "dislike", "dislikes", "except", "never",
+].map((c) => c.split(" "));
+/** Hinglish cues that negate the words BEFORE them ("dinosaur nahi", "art mat do"). */
+export const NEG_AFTER = ["nahi chahiye", "nahin chahiye", "nahi", "nahin", "mat do", "mat dena", "mat lena", "mat lo"].map((c) => c.split(" "));
+/** "no X" phrases that are not a negation of a wanted thing. */
+export const NOT_NEGATED_AFTER_NO = new Set(["wait", "budget", "limit", "bar", "more", "idea", "problem", "preference", "worries", "rush", "pressure", "matter", "sure", "really", "yet", "exactly", "certain", "bad"]);
+/** Words that end a negation's scope. "and" ends it only when a new clause follows (see parser.ts). */
+export const SCOPE_END = new Set(["but", "for", "so", "because", "though", "instead", "rather", "except"]);
+/** Words inside a negation that are not things to exclude. */
+export const NEG_FILLER = new Set(
+  "anymore any more really at all too very much many please stuff things kind type sort of expensive costly pricey above over below under than mujhe hamein usko use".split(" "),
+);
+/** Gender from these alone is a guess (low confidence). */
+export const PRONOUNS = new Set(["he", "she", "him", "her", "his", "hes", "shes"]);

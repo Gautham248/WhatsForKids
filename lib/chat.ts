@@ -61,6 +61,8 @@ export interface TurnInfo {
   after: Slots;
   result?: SearchResult;
   llm?: { tin: number; tout: number; costRs: number; notes: string[] };
+  /** What the parser understood beyond the slots. Memory only, never stored. */
+  parse?: Pick<Parse, "confidence" | "excluded" | "conflicts" | "corrections" | "fixes">;
   costRs: number;
   notes: string[];
 }
@@ -185,6 +187,47 @@ export const profilePills = (d: Data): Pill[] =>
 
 const agePills = (): Pill[] => BANDS.map((b) => ({ label: bandLabel(b).replace(" years", ""), act: { t: "age", band: b } as Act }));
 
+const listText = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
+/** Drop excluded categories and interests from the search, and say so. Reply text is a fixed template. */
+function applyExclusions(s: Slots, ex: Parse["excluded"], notes: string[]): { slots: Slots; lead: string } {
+  if (!ex) return { slots: s, lead: "" };
+  const next: Slots = { ...s };
+  if (next.category && ex.categories.includes(next.category)) delete next.category;
+  if (next.interests) {
+    next.interests = next.interests.filter((i) => !ex.interests.includes(i));
+    if (!next.interests.length) delete next.interests;
+  }
+  const names = [
+    ...ex.interests.filter((i) => INTERESTS[i] && !ex.categories.includes(i)).map((i) => INTERESTS[i].toLowerCase()),
+    ...ex.categories.filter((c) => CATEGORIES[c]).map((c) => CATEGORIES[c].toLowerCase()),
+  ];
+  let lead = names.length ? `Leaving out ${listText(names)}. ` : "";
+  if (ex.other.length) {
+    lead += `I can't filter out ${listText(ex.other.map((o) => `“${o}”`))} yet, so please check each product page. `;
+    notes.push(`Exclusions without a filter (acknowledged, not applied): ${ex.other.join(", ")}.`);
+  }
+  if (names.length) notes.push(`Excluded from the search: ${names.join(", ")}.`);
+  return { slots: next, lead };
+}
+
+/** Echo a guessed age or budget back as a question, with pills so a wrong guess costs one tap. Age and budget only. */
+function confidenceEcho(p: Parse, s: Slots, notes: string[]): { text: string; pills: Pill[] } {
+  let text = "";
+  const pills: Pill[] = [];
+  if (p.confidence.age === "low" && p.slots.age && s.age === p.slots.age) {
+    text += `Looking at ages ${bandLabel(s.age).replace(" years", "")}. Right? If not, pick the age below. `;
+    pills.push(...agePills().filter((x) => x.act.t === "age" && x.act.band !== s.age));
+    notes.push(`Age ${s.age} is a guess from a life-stage word, so it is echoed back.`);
+  }
+  if (p.confidence.budget === "low" && p.slots.budget && s.budget === p.slots.budget) {
+    text += `Using a budget ${budgetLabel(s.budget).toLowerCase()}. Change it below if that's off. `;
+    pills.push(...BUDGETS.filter((b) => b !== s.budget).map((b) => ({ label: budgetLabel(b), act: { t: "budget", cap: b } as Act })));
+    notes.push(`Budget ${s.budget} is a guess from a budget word, so it is echoed back.`);
+  }
+  return { text, pills };
+}
+
 export function initialChat(): Chat {
   return {
     msgs: [
@@ -237,13 +280,13 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
   };
 
   // ---- respond: ask for age, or search and show results
-  const respond = (via: Omit<TurnInfo, "before" | "after" | "costRs" | "notes">, costRs = 0) => {
+  const respond = (via: Omit<TurnInfo, "before" | "after" | "costRs" | "notes">, costRs = 0, lead = "", extraPills: Pill[] = []) => {
     const s = chat.slots;
     if (!s.age) {
       const profile = profilePills(d);
       const more = missingSlots(s).filter((x) => x !== "age");
       const tail = more.length ? ` If you like, also tell me ${askFor(more)}.` : "";
-      say({ text: `${describeSlots(s) ? `Got it: ${describeSlots(s)}. ` : ""}How old is the child?${tail} Type it, or pick below.`, groups: followUpGroups(d, s), pills: profile, hint: hintFor(s) });
+      say({ text: `${lead}${describeSlots(s) ? `Got it: ${describeSlots(s)}. ` : ""}How old is the child?${tail} Type it, or pick below.`, groups: followUpGroups(d, s), pills: [...extraPills, ...profile], hint: hintFor(s) });
       return finish({ ...via, costRs });
     }
     let res = search(d, s, chat.shown);
@@ -261,8 +304,8 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     }
     if (!res.ranked.length) {
       say({
-        text: `Nothing matches ${describeSlots(s)} right now. ${res.relax.length ? "I can relax one filter:" : "Try a different age, or start over."}`,
-        pills: [...res.relax.map((r) => ({ label: `${r.label} (${r.n} ideas)`, act: { t: "relax", what: r.patch } as Act })), { label: "Start over", act: { t: "reset" } }],
+        text: `${lead}Nothing matches ${describeSlots(s)} right now. ${res.relax.length ? "I can relax one filter:" : "Try a different age, or start over."}`,
+        pills: [...extraPills, ...res.relax.map((r) => ({ label: `${r.label} (${r.n} ideas)`, act: { t: "relax", what: r.patch } as Act })), { label: "Start over", act: { t: "reset" } }],
       });
       return finish({ ...via, result: res, costRs });
     }
@@ -272,11 +315,11 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     const gaps = missingSlots(chat.slots);
     const follow = gaps.length ? ` To narrow it down, tell me ${askFor(gaps)}. Type it, or pick as many as you like below.` : " Tap a card for details, or refine below.";
     say({
-      text: `${stepped ? stepped + " " : ""}${n === 1 ? "Here is 1 idea" : `Here are ${n} ideas`} for ${describeSlots(chat.slots)}.${res.total <= n ? " That is everything that matches right now." : ""}${follow}`,
+      text: `${lead}${stepped ? stepped + " " : ""}${n === 1 ? "Here is 1 idea" : `Here are ${n} ideas`} for ${describeSlots(chat.slots)}.${res.total <= n ? " That is everything that matches right now." : ""}${follow}`,
       cards: res.ranked.map((r) => r.id),
       cardInfo: info,
       groups: followUpGroups(d, chat.slots, res.ranked.map((r) => r.id)),
-      pills: [{ label: "Start over", act: { t: "reset" } }],
+      pills: [...extraPills, { label: "Start over", act: { t: "reset" } }],
       hint: hintFor(chat.slots),
     });
     res.ranked.forEach((r) => chat.shown.push(r.id));
@@ -358,7 +401,7 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     }
   }
   if (path === "text-rules") chat.ruleTurns++;
-  const via = { path, why, input: text, picked: picks.length ? picks.map(actLabel) : undefined, intent: parse.intent, parsed: parse.slots, llm } as Omit<TurnInfo, "before" | "after" | "costRs" | "notes">;
+  const via = { path, why, input: text, picked: picks.length ? picks.map(actLabel) : undefined, intent: parse.intent, parsed: parse.slots, llm, parse: { confidence: parse.confidence, excluded: parse.excluded, conflicts: parse.conflicts, corrections: parse.corrections, fixes: parse.fixes } } as Omit<TurnInfo, "before" | "after" | "costRs" | "notes">;
   const cost = llm?.costRs ?? 0;
 
   if (parse.intent === "out_of_range") {
@@ -396,7 +439,20 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
     return { chat, shownIds, llmCostRs };
   }
 
-  const merged = mergeSlots(chat.slots, parse.slots, parse.clear, parse.reset);
+  const ex = applyExclusions(mergeSlots(chat.slots, parse.slots, parse.clear, parse.reset), parse.excluded, notes);
+  const merged = ex.slots;
+  if (parse.conflicts?.ages?.length) {
+    // Two different ages in one message: ask which child rather than guess. Nothing is searched yet.
+    chat.slots = merged;
+    const bands = parse.conflicts.ages;
+    say({
+      text: `${ex.lead}Which child is this for? You mentioned ages ${listText(bands.map((b) => bandLabel(b).replace(" years", "")))}. Pick one and I'll search for that age.`,
+      pills: [...bands.map((b) => ({ label: bandLabel(b).replace(" years", ""), act: { t: "age", band: b } as Act })), ...profilePills(d)],
+    });
+    notes.push(`Ages ${bands.join(" and ")} in one message: asked which child instead of guessing. Other details were kept.`);
+    finish({ ...via, costRs: cost });
+    return { chat, shownIds, llmCostRs };
+  }
   if (parse.intent === "cert") {
     chat.slots = merged;
     const token = parse.cert!;
@@ -423,6 +479,8 @@ export function runTurn(d: Data, prev: Chat, ev: TurnEvent, now = new Date()): T
   }
 
   chat.slots = merged;
-  respond(via, cost);
+  if (parse.corrections.length) notes.push(`Correction: ${parse.corrections.join(", ")} replaced the earlier value.`);
+  const echo = confidenceEcho(parse, merged, notes);
+  respond(via, cost, ex.lead + echo.text, echo.pills);
   return { chat, shownIds, llmCostRs, history };
 }
