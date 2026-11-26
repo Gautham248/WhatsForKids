@@ -8,7 +8,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:logic": "tsx scripts/smoke.ts"
+    "test:logic": "tsx scripts/smoke.ts",
+    "test:golden": "tsx scripts/golden.ts"
   },
   "dependencies": {
     "next": "^16.4.6",
